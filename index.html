@@ -1,26 +1,75 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Gaussian Splats Visualization</title>
+    <title>Wildflow Coral</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/styles.css" />
+    <!-- Update favicon reference to use logo.svg -->
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins&display=swap"
+      rel="stylesheet"
+    />
+
     <style>
       body {
         margin: 0;
         overflow: hidden;
-        background-color: black; /* Set the body background color to black */
+        background-color: black;
       }
       #viewer {
         width: 100vw;
         height: 100vh;
-        background-color: black; /* Ensure the viewer div has a black background */
+        background-color: black;
       }
+      /* Logo container styling */
+      #logo-container {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        z-index: 10;
+        /* You can add background or padding if desired */
+        /* background-color: rgba(0, 0, 0, 0.6); */
+        /* border-radius: 8px; */
+        /* padding: 6px; */
+      }
+      #logo-container img {
+        width: 30px;
+        height: auto;
+        display: block;
+      }
+      #text-container {
+        position: absolute;
+        bottom: 0px;
+        right: 0px;
+        z-index: 10;
+        background-color: rgba(0, 0, 0, 0.7);
+        padding: 3px 10px;
+        color: white;
+        font-family: "Poppins", sans-serif;
+        font-size: 14px;
+        line-height: 1.4;
+        text-align: right;
+      }
+      /* Remove the favicon-container since we're moving the logo */
+      /* No additional styles are needed for the favicon */
     </style>
   </head>
   <body>
     <div id="viewer"></div>
+    <!-- Updated logo-container to use logo.svg -->
+    <div id="logo-container">
+      <img src="/favicon.svg" alt="Wildflow Logo" />
+    </div>
+    <!-- Removed favicon-container -->
+    <!-- <div id="favicon-container">
+      <img src="/favicon.svg" alt="Favicon" />
+    </div> -->
+    <div id="text-container">Data: UCL, LU, IPB...</div>
     <script type="module" src="/main.js"></script>
   </body>
 </html>
