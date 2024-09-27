@@ -3,7 +3,7 @@ import * as GaussianSplats3D from "@mkkellogg/gaussian-splats-3d";
 import * as THREE from "three";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 
-export default function Viewer3D() {
+export default function Viewer3D({ modelId }) {
   const viewerRef = useRef(null);
   const viewerInstanceRef = useRef(null);
   const wireframeMeshRef = useRef(null);
@@ -17,7 +17,7 @@ export default function Viewer3D() {
     if (!isMounted || !viewerRef.current) return;
 
     const threeScene = new THREE.Scene();
-    const modelUrl = "/splats.ksplat";
+    const modelUrl = `https://storage.googleapis.com/wildflow/${modelId}/splats.ksplat`;
 
     const viewer = new GaussianSplats3D.Viewer({
       cameraUp: [0.24929, -0.2672, -0.93084],
@@ -37,7 +37,7 @@ export default function Viewer3D() {
     viewerInstanceRef.current = viewer;
 
     const plyLoader = new PLYLoader();
-    plyLoader.load("/model_full.ply", (geometry) => {
+    plyLoader.load(modelUrl, (geometry) => {
       const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
       const wireframeMesh = new THREE.LineSegments(
         new THREE.WireframeGeometry(geometry),
@@ -99,7 +99,7 @@ export default function Viewer3D() {
         viewerInstanceRef.current = null;
       }
     };
-  }, [isMounted]);
+  }, [isMounted, modelId]);
 
   if (!isMounted) return null;
 

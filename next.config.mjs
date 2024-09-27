@@ -25,7 +25,6 @@ const nextConfig = {
     });
     return config;
   },
-  // Add this to optimize for production
   swcMinify: true,
 };
 

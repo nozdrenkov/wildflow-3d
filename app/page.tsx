@@ -1,30 +1,13 @@
-"use client";
-
-import Viewer3DWrapper from "./components/Viewer3DWrapper";
-import Image from "next/image";
 import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="relative w-full h-screen">
-      <Viewer3DWrapper />
-      <div className="absolute bottom-2.5 left-2.5 z-50">
-        <Link
-          href="https://wildflow.ai"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            src="/favicon.svg"
-            alt="Wildflow Logo"
-            width={30}
-            height={30}
-          />
-        </Link>
-      </div>
-      <div className="absolute bottom-0 right-0 z-50 bg-black/70 px-2.5 py-1 text-white font-poppins text-sm leading-[1.4] text-right">
-        Data: UCL, LU, IPB...
-      </div>
+    <div className="flex flex-col items-center justify-center min-h-screen">
+      <h1 className="text-4xl mb-4">Welcome to Wildflow Coral 3D Viewer</h1>
+      <p className="mb-4">Enter a model ID in the URL to view a 3D model.</p>
+      <Link href="/W32Em7" className="text-blue-500 hover:underline">
+        View Sample Model (W32Em7)
+      </Link>
     </div>
   );
 }
