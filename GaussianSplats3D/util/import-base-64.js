@@ -1,5 +1,5 @@
-import { createFilter } from '@rollup/pluginutils';
-import { readFileSync } from 'fs';
+import { createFilter } from "@rollup/pluginutils";
+import { readFileSync } from "fs";
 
 export function base64(opts = {}) {
   if (!opts.include) {
@@ -12,11 +12,11 @@ export function base64(opts = {}) {
     transform(data, id) {
       if (filter(id)) {
         const fileData = readFileSync(id);
-          return {
-            code: `export default "${fileData.toString('base64')}";`,
-            map: null
-          }
+        return {
+          code: `export default "${fileData.toString("base64")}";`,
+          map: null,
+        };
       }
-    }
+    },
   };
 }

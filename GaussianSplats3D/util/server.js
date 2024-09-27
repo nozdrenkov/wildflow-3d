@@ -1,21 +1,21 @@
-import * as http from 'http';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as http from "http";
+import * as fs from "fs";
+import * as path from "path";
 
-let baseDirectory = '.';
+let baseDirectory = ".";
 let port = 8080;
-let host = '0.0.0.0';
+let host = "0.0.0.0";
 let lasttRequesTime = performance.now() / 1000;
-for(let i = 0; i < process.argv.length; ++i) {
-  if (process.argv[i] == '-d' && i < process.argv.length - 1) {
+for (let i = 0; i < process.argv.length; ++i) {
+  if (process.argv[i] == "-d" && i < process.argv.length - 1) {
     baseDirectory = process.argv[i + 1];
   }
-  if (process.argv[i] == '-p' && i < process.argv.length - 1) {
+  if (process.argv[i] == "-p" && i < process.argv.length - 1) {
     port = process.argv[i + 1];
   }
-  if (process.argv[i] == '-h' && i < process.argv.length - 1) {
+  if (process.argv[i] == "-h" && i < process.argv.length - 1) {
     host = process.argv[i + 1];
-  } 
+  }
 }
 
 function sleep(ms) {
@@ -25,8 +25,7 @@ function sleep(ms) {
 }
 
 http
-  .createServer( async function (request, response) {
-
+  .createServer(async function (request, response) {
     response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
     response.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
 
@@ -59,7 +58,7 @@ http
     }
 
     let queryString;
-    let queryStringStart = filePath.indexOf('?');
+    let queryStringStart = filePath.indexOf("?");
     if (queryStringStart && queryStringStart > 0) {
       queryString = filePath.substring(queryStringStart + 1);
       filePath = filePath.substring(0, queryStringStart);
@@ -79,7 +78,7 @@ http
           filePath = testDirectory + "index.htm";
         }
       }
-    } catch(err) {
+    } catch (err) {
       // ignore
     }
 
@@ -89,21 +88,25 @@ http
         const fileSizeInBytes = stats.size;
         response.setHeader("Content-Length", fileSizeInBytes);
       }
-    } catch(err) {
+    } catch (err) {
       // ignore
     }
 
     fs.readFile(filePath, async function (error, content) {
       if (error) {
         if (error.code == "ENOENT") {
-          console.log("HTTP(404) Request for " + filePath + " -> File not found.");
+          console.log(
+            "HTTP(404) Request for " + filePath + " -> File not found.",
+          );
         } else {
-          console.log("HTTP(500)) Request for " + filePath + " -> Server error.");
+          console.log(
+            "HTTP(500)) Request for " + filePath + " -> Server error.",
+          );
           response.writeHead(500);
           response.end(
             "Sorry, check with the site admin for error: " +
               error.code +
-              " ..\n"
+              " ..\n",
           );
           response.end();
         }
@@ -117,4 +120,4 @@ http
     lasttRequesTime = requestTime;
   })
   .listen(port, host);
-console.log("Server running at " + host + ':' + port);
+console.log("Server running at " + host + ":" + port);

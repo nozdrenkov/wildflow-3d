@@ -1,3 +1,3 @@
 function isMobile() {
-    return navigator.userAgent.includes("Mobi");
+  return navigator.userAgent.includes("Mobi");
 }
