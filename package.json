@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@heroicons/react": "^2.1.5",
     "@mkkellogg/gaussian-splats-3d": "^0.4.5",
     "next": "14.2.13",
     "react": "^18",

@@ -26,7 +26,9 @@ export default function ModelViewer() {
         </Link>
       </div>
       <div className="absolute bottom-0 right-0 z-50 bg-black/70 px-2.5 py-1 text-white font-poppins text-sm leading-[1.4] text-right">
-        Data: UCL, LU, IPB...
+        <Link href={`/${modelId}/contributors`} className="hover:underline">
+          Data: UCL, LU, IPB...
+        </Link>
       </div>
     </div>
   );
