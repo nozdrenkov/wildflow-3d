@@ -17,9 +17,9 @@ export default function Viewer3D({ modelId }) {
     if (!isMounted || !viewerRef.current) return;
 
     const threeScene = new THREE.Scene();
-    // const modelUrl = `https://storage.googleapis.com/wildflow/${modelId}/splats.ksplat`;
-    const modelUrl = `/splats.ksplat`;
-    const meshUrl = `/model_full.ply`;
+    const modelUrl = `https://storage.googleapis.com/wildflow/${modelId}/splats.ksplat`;
+    // const modelUrl = `/splats.ksplat`;
+    const meshUrl = `/model_full-.ply`;
 
     const viewer = new GaussianSplats3D.Viewer({
       cameraUp: [0.24929, -0.2672, -0.93084],
