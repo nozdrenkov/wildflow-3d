@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Viewer3DWrapper from "../components/Viewer3DWrapper";
 import Image from "next/image";
 import Link from "next/link";
+import { fetchContributors } from "../utils/fetchContributors";
 
 export default function ModelLayout({
   children,
@@ -14,9 +15,16 @@ export default function ModelLayout({
   params: { modelId: string };
 }) {
   const [showContributors, setShowContributors] = useState(false);
+  const [dataSource, setDataSource] = useState("Loading...");
   const pathname = usePathname();
   const router = useRouter();
   const { modelId } = params;
+
+  useEffect(() => {
+    fetchContributors(modelId)
+      .then((data) => setDataSource(data.dataSource))
+      .catch((error) => console.error("Error fetching contributors:", error));
+  }, [modelId]);
 
   useEffect(() => {
     setShowContributors(pathname.endsWith("/contributors"));
@@ -49,7 +57,7 @@ export default function ModelLayout({
       </div>
       <div className="absolute bottom-0 right-0 z-50 bg-black/70 px-2.5 py-1 text-white font-poppins text-sm leading-[1.4] text-right">
         <button onClick={handleContributorsToggle} className="hover:underline">
-          Data: UCL, LU, IPB...
+          {dataSource}
         </button>
       </div>
       {showContributors && children}

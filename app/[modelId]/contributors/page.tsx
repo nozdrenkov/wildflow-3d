@@ -2,24 +2,27 @@
 
 import { useRouter } from "next/navigation";
 import { XMarkIcon } from "@heroicons/react/24/solid";
+import { fetchContributors } from "../../utils/fetchContributors";
+import { useEffect, useState } from "react";
+import { ReactNode } from "react";
 
-export default function Contributors() {
+export default function Contributors({
+  params,
+}: {
+  params: { modelId: string };
+}) {
   const router = useRouter();
+  const { modelId } = params;
+  const [contributorsContent, setContributorsContent] =
+    useState<ReactNode | null>(null);
 
-  const contributors = [
-    "Rindah Talitha Vida",
-    "Tries B. Razak",
-    "Andrew O. M. Mogg",
-    "Ronan Roche",
-    "Jason Lynch",
-    "Ben Williams",
-    "Mars Coral Restoration Project Monitoring Team",
-    "Cut Aja Gita Alisa",
-    "Beginer Subhan",
-    "Syamsul B. Agus",
-    "Nicholas A. J. Graham",
-    "Timothy A. C. Lamont",
-  ];
+  useEffect(() => {
+    fetchContributors(modelId)
+      .then((data) => {
+        setContributorsContent(data.contributorsContent);
+      })
+      .catch((error) => console.error("Error fetching contributors:", error));
+  }, [modelId]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -30,15 +33,7 @@ export default function Contributors() {
         >
           <XMarkIcon className="h-6 w-6 text-white hover:text-gray-300" />
         </button>
-        <h1 className="text-3xl font-bold mb-6">Contributors</h1>
-        <p className="mb-4">
-          Huge thanks for this data to these people from UCL, LU, IPB and Mars:
-        </p>
-        <ul className="list-disc list-inside space-y-2">
-          {contributors.map((contributor, index) => (
-            <li key={index}>{contributor}</li>
-          ))}
-        </ul>
+        <div className="space-y-4">{contributorsContent}</div>
       </div>
     </div>
   );
