@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
+// eslint-disable-next-line
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 
 // Add this function at the top of your file, outside of the component
+// eslint-disable-next-line
 function createDebuggedViewer(options) {
   console.log("Creating debugged viewer with options:", options);
   const originalProgressCallback = options.progressCallback;
@@ -19,7 +21,6 @@ function createDebuggedViewer(options) {
 export default function Viewer3D({ modelId, onProgress }) {
   const viewerRef = useRef(null);
   const viewerInstanceRef = useRef(null);
-  const wireframeMeshRef = useRef(null);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -29,6 +30,8 @@ export default function Viewer3D({ modelId, onProgress }) {
   useEffect(() => {
     console.log("Viewer3D effect running");
     if (!isMounted || !viewerRef.current) return;
+
+    const currentViewerRef = viewerRef.current;
 
     const viewer = new GaussianSplats3D.Viewer({
       cameraUp: [0.24929, -0.2672, -0.93084],
@@ -90,9 +93,9 @@ export default function Viewer3D({ modelId, onProgress }) {
           viewer.renderer.dispose();
         }
 
-        // Remove the canvas from the DOM
-        if (viewerRef.current && viewerRef.current.firstChild) {
-          viewerRef.current.removeChild(viewerRef.current.firstChild);
+        // Use the captured ref
+        if (currentViewerRef && currentViewerRef.firstChild) {
+          currentViewerRef.removeChild(currentViewerRef.firstChild);
         }
 
         viewerInstanceRef.current = null;

@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 interface ProgressBarProps {
   percent: number;
-  message: string;
 }
 
-export default function ProgressBar({ percent, message }: ProgressBarProps) {
+export default function ProgressBar({ percent }: ProgressBarProps) {
+  useEffect(() => {
+    console.log(`ProgressBar updated: ${percent}%`);
+  }, [percent]);
+
   return (
     <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
       <div 

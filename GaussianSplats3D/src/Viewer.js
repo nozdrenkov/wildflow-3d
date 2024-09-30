@@ -42,6 +42,8 @@ const CONSECUTIVE_RENDERED_FRAMES_FOR_FPS_CALCULATION = 60;
  */
 export class Viewer {
   constructor(options = {}) {
+    this.isLoading = false;
+    this.isUnloading = false;
     // The natural 'up' vector for viewing the scene (only has an effect when used with orbit controls and
     // when the viewer uses its own camera).
     if (!options.cameraUp) options.cameraUp = [0, 1, 0];
@@ -328,6 +330,10 @@ export class Viewer {
     if (!this.dropInMode) this.init();
 
     this.progressCallback = options.progressCallback || null;
+  }
+
+  isLoadingOrUnloading() {
+    return this.isLoading || this.isUnloading;
   }
 
   createSplatMesh() {
@@ -866,12 +872,12 @@ export class Viewer {
    * @return {AbortablePromise}
    */
   addSplatScene(path, options = {}) {
+    console.log("addSplatScene called with path:", path, "and options:", options);
     if (this.isLoadingOrUnloading()) {
       throw new Error(
         "Cannot add splat scene while another load or unload is already in progress.",
       );
     }
-
     if (this.isDisposingOrDisposed()) {
       throw new Error("Cannot add splat scene after dispose() is called.");
     }
@@ -972,12 +978,24 @@ export class Viewer {
       percentCompleteLabel,
       loaderStatus,
     ) => {
-      downloadedPercentage = percentComplete;
-      onProgressUIUpdate(percentComplete, percentCompleteLabel, loaderStatus);
+      let adjustedPercent;
+      let message;
+
+      if (loaderStatus === LoaderStatus.Processing) {
+        adjustedPercent = Math.min(20, percentComplete / 5);
+        message = "Processing splats";
+      } else if (loaderStatus === LoaderStatus.Downloading) {
+        adjustedPercent = 20 + (percentComplete * 0.6);
+        message = "Loading splat data";
+      } else {
+        adjustedPercent = 80 + (percentComplete * 0.2);
+        message = "Optimizing data structures";
+      }
+
       if (options.onProgress)
-        options.onProgress(percentComplete, percentCompleteLabel, loaderStatus);
+        options.onProgress(adjustedPercent, message, loaderStatus);
       if (this.progressCallback) {
-        this.progressCallback(percentComplete, percentCompleteLabel);
+        this.progressCallback(adjustedPercent, message);
       }
     };
 
@@ -1331,10 +1349,12 @@ export class Viewer {
     onSectionBuilt = undefined,
     format,
   ) {
+    this.isLoading = true;
     const optimizeSplatData = progressiveBuild ? false : this.optimizeSplatData;
     try {
+      let loadPromise;
       if (format === SceneFormat.Splat) {
-        return SplatLoader.loadFromURL(
+        loadPromise = SplatLoader.loadFromURL(
           path,
           onProgress,
           progressiveBuild,
@@ -1344,14 +1364,14 @@ export class Viewer {
           optimizeSplatData,
         );
       } else if (format === SceneFormat.KSplat) {
-        return KSplatLoader.loadFromURL(
+        loadPromise = KSplatLoader.loadFromURL(
           path,
           onProgress,
           progressiveBuild,
           onSectionBuilt,
         );
       } else if (format === SceneFormat.Ply) {
-        return PlyLoader.loadFromURL(
+        loadPromise = PlyLoader.loadFromURL(
           path,
           onProgress,
           progressiveBuild,
@@ -1361,8 +1381,24 @@ export class Viewer {
           optimizeSplatData,
           this.sphericalHarmonicsDegree,
         );
+      } else {
+        throw new Error(
+          `Viewer::downloadSplatSceneToSplatBuffer -> File format not supported: ${path}`,
+        );
       }
+  
+      // Ensure loadPromise is a Promise
+      return Promise.resolve(loadPromise)
+        .then((result) => {
+          this.isLoading = false;
+          return result;
+        })
+        .catch((error) => {
+          this.isLoading = false;
+          throw error;
+        });
     } catch (e) {
+      this.isLoading = false;
       if (e instanceof DirectLoadError) {
         throw new Error(
           "File type or server does not support progressive loading.",
@@ -1371,10 +1407,6 @@ export class Viewer {
         throw e;
       }
     }
-
-    throw new Error(
-      `Viewer::downloadSplatSceneToSplatBuffer -> File format not supported: ${path}`,
-    );
   }
 
   static isProgressivelyLoadable(format) {
@@ -2580,5 +2612,21 @@ export class Viewer {
 
   isMobile() {
     return navigator.userAgent.includes("Mobi");
+  }
+
+  unloadSplatScene() {
+    if (this.isLoadingOrUnloading()) {
+      throw new Error("Cannot unload while loading or unloading is in progress.");
+    }
+    this.isUnloading = true;
+    try {
+      // Existing unload logic goes here
+      // For example:
+      // this.splatMesh.unloadScene();
+      // this.renderer.clear();
+      // ... other cleanup code ...
+    } finally {
+      this.isUnloading = false;
+    }
   }
 }
