@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import * as GaussianSplats3D from "@mkkellogg/gaussian-splats-3d";
+import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 

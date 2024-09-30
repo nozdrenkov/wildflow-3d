@@ -1,3 +1,9 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -19,10 +25,8 @@ const nextConfig = {
     ];
   },
   webpack: (config) => {
-    config.externals.push({
-      "utf-8-validate": "commonjs utf-8-validate",
-      bufferutil: "commonjs bufferutil",
-    });
+    config.resolve.alias['gaussian-splats-3d'] =
+      path.resolve(__dirname, 'GaussianSplats3D/build/gaussian-splats-3d.module.js');
     return config;
   },
   swcMinify: true,
