@@ -872,7 +872,6 @@ export class Viewer {
    * @return {AbortablePromise}
    */
   addSplatScene(path, options = {}) {
-    console.log("addSplatScene called with path:", path, "and options:", options);
     if (this.isLoadingOrUnloading()) {
       throw new Error(
         "Cannot add splat scene while another load or unload is already in progress.",
@@ -983,13 +982,13 @@ export class Viewer {
 
       if (loaderStatus === LoaderStatus.Processing) {
         adjustedPercent = Math.min(20, percentComplete / 5);
-        message = "Processing splats";
+        message = "Processing splats...";
       } else if (loaderStatus === LoaderStatus.Downloading) {
         adjustedPercent = 20 + (percentComplete * 0.6);
-        message = "Loading splat data";
+        message = "Loading splat data...";
       } else {
         adjustedPercent = 80 + (percentComplete * 0.2);
-        message = "Optimizing data structures";
+        message = "Optimizing data structures...";
       }
 
       if (options.onProgress)

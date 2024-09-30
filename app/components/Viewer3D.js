@@ -7,10 +7,8 @@ import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 // Add this function at the top of your file, outside of the component
 // eslint-disable-next-line
 function createDebuggedViewer(options) {
-  console.log("Creating debugged viewer with options:", options);
   const originalProgressCallback = options.progressCallback;
   options.progressCallback = (percent, message) => {
-    console.log(`GaussianSplats3D internal progress: ${percent}%, ${message}`);
     if (originalProgressCallback) {
       originalProgressCallback(percent, message);
     }
@@ -28,7 +26,6 @@ export default function Viewer3D({ modelId, onProgress }) {
   }, []);
 
   useEffect(() => {
-    console.log("Viewer3D effect running");
     if (!isMounted || !viewerRef.current) return;
 
     const currentViewerRef = viewerRef.current;
@@ -47,18 +44,18 @@ export default function Viewer3D({ modelId, onProgress }) {
         crossOriginIsolated: true,
       },
       progressCallback: (percent, message) => {
-        console.log(`Viewer progressCallback: ${percent}%, ${message}`);
         onProgress(percent, message);
       },
     });
 
     viewerInstanceRef.current = viewer;
 
-    console.log("Adding splat scene...");
+    // const modelUrl = `/splats.ksplat`
+    const modelUrl = `https://storage.googleapis.com/wildflow/${modelId}/splats.ksplat`;
     viewer
-      .addSplatScene(`/splats.ksplat`, {
+      .addSplatScene(modelUrl, {
         splatAlphaRemovalThreshold: 5,
-        showLoadingUI: true,
+        showLoadingUI: false,
         position: [0, 1, 0],
         rotation: [0, 0, 0, 1],
         scale: [1.5, 1.5, 1.5],
@@ -75,7 +72,6 @@ export default function Viewer3D({ modelId, onProgress }) {
       });
 
     return () => {
-      console.log("Viewer3D cleanup");
       const viewer = viewerInstanceRef.current;
       if (viewer) {
         // Stop the animation loop

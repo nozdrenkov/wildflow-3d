@@ -10,9 +10,13 @@ interface Viewer3DWrapperProps {
 
 export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
   const [progress, setProgress] = useState({ percent: 0, message: "Initializing..." });
+  const [isLoading, setIsLoading] = useState(true);
 
   const handleProgress = useCallback((percent: number, message: string) => {
     setProgress({ percent, message });
+    if (percent >= 100) {
+      setIsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -22,14 +26,21 @@ export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
 
   return (
     <div className="relative w-full h-screen">
-      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-50 z-50">
-        <div className="text-white text-xl mb-4">
-          {progress.message} ({progress.percent.toFixed(2)}%)
+      {isLoading && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-transparent z-50 pointer-events-none">
+          <div className="flex flex-row items-center justify-center">
+            <div className="w-64">
+              <ProgressBar percent={progress.percent} />
+            </div>
+            <div className="text-blue-100 text w-16 ml-2">
+              {progress.percent.toFixed(0)}%
+            </div>
+          </div>
+          <div className="text-blue-100 text-xs pr-16">
+            {progress.message}
+          </div>
         </div>
-        <div className="w-64">
-          <ProgressBar percent={progress.percent} />
-        </div>
-      </div>
+      )}
       <Viewer3D modelId={modelId} onProgress={handleProgress} />
     </div>
   );
