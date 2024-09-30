@@ -326,6 +326,8 @@ export class Viewer {
     this.disposed = false;
     this.disposePromise = null;
     if (!this.dropInMode) this.init();
+
+    this.progressCallback = options.progressCallback || null;
   }
 
   createSplatMesh() {
@@ -974,6 +976,9 @@ export class Viewer {
       onProgressUIUpdate(percentComplete, percentCompleteLabel, loaderStatus);
       if (options.onProgress)
         options.onProgress(percentComplete, percentCompleteLabel, loaderStatus);
+      if (this.progressCallback) {
+        this.progressCallback(percentComplete, percentCompleteLabel);
+      }
     };
 
     const buildSection = (splatBuffer, firstBuild, finalBuild) => {

@@ -1,9 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 
-export default function Viewer3D({ modelId }) {
+// Add this function at the top of your file, outside of the component
+function createDebuggedViewer(options) {
+  console.log("Creating debugged viewer with options:", options);
+  const originalProgressCallback = options.progressCallback;
+  options.progressCallback = (percent, message) => {
+    console.log(`GaussianSplats3D internal progress: ${percent}%, ${message}`);
+    if (originalProgressCallback) {
+      originalProgressCallback(percent, message);
+    }
+  };
+  return new GaussianSplats3D.Viewer(options);
+}
+
+export default function Viewer3D({ modelId, onProgress }) {
   const viewerRef = useRef(null);
   const viewerInstanceRef = useRef(null);
   const wireframeMeshRef = useRef(null);
@@ -14,12 +27,8 @@ export default function Viewer3D({ modelId }) {
   }, []);
 
   useEffect(() => {
+    console.log("Viewer3D effect running");
     if (!isMounted || !viewerRef.current) return;
-
-    const threeScene = new THREE.Scene();
-    const modelUrl = `https://storage.googleapis.com/wildflow/${modelId}/splats.ksplat`;
-    // const modelUrl = `/splats.ksplat`;
-    const meshUrl = `/model_full-.ply`;
 
     const viewer = new GaussianSplats3D.Viewer({
       cameraUp: [0.24929, -0.2672, -0.93084],
@@ -28,40 +37,23 @@ export default function Viewer3D({ modelId }) {
       rootElement: viewerRef.current,
       sceneRevealMode: GaussianSplats3D.SceneRevealMode.Gradual,
       crossOrigin: "anonymous",
-      threeScene: threeScene,
+      threeScene: new THREE.Scene(),
       selfDrivenMode: true,
       useWorkers: true,
       workerConfig: {
         crossOriginIsolated: true,
       },
+      progressCallback: (percent, message) => {
+        console.log(`Viewer progressCallback: ${percent}%, ${message}`);
+        onProgress(percent, message);
+      },
     });
 
     viewerInstanceRef.current = viewer;
 
-    const plyLoader = new PLYLoader();
-    plyLoader.load(meshUrl, (geometry) => {
-      const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
-      const wireframeMesh = new THREE.LineSegments(
-        new THREE.WireframeGeometry(geometry),
-        lineMaterial
-      );
-
-      geometry.computeBoundingBox();
-      const meshCenter = new THREE.Vector3();
-      geometry.boundingBox.getCenter(meshCenter);
-
-      wireframeMesh.position.sub(meshCenter);
-
-      const meshGroup = new THREE.Group();
-      meshGroup.add(wireframeMesh);
-      meshGroup.position.set(0.44, 0.04, -10.85);
-
-      threeScene.add(meshGroup);
-      wireframeMeshRef.current = wireframeMesh;
-    });
-
+    console.log("Adding splat scene...");
     viewer
-      .addSplatScene(modelUrl, {
+      .addSplatScene(`/splats.ksplat`, {
         splatAlphaRemovalThreshold: 5,
         showLoadingUI: true,
         position: [0, 1, 0],
@@ -70,12 +62,17 @@ export default function Viewer3D({ modelId }) {
         progressiveLoad: true,
       })
       .then(() => {
+        console.log("Splat scene added successfully");
         if (viewerInstanceRef.current) {
           viewerInstanceRef.current.start();
         }
+      })
+      .catch((error) => {
+        console.error("Error adding splat scene:", error);
       });
 
     return () => {
+      console.log("Viewer3D cleanup");
       const viewer = viewerInstanceRef.current;
       if (viewer) {
         // Stop the animation loop
@@ -85,7 +82,7 @@ export default function Viewer3D({ modelId }) {
 
         // Remove the scene
         if (viewer.splatMesh) {
-          threeScene.remove(viewer.splatMesh);
+          viewer.splatMesh.scene.remove(viewer.splatMesh);
         }
 
         // Dispose of the renderer
@@ -101,7 +98,7 @@ export default function Viewer3D({ modelId }) {
         viewerInstanceRef.current = null;
       }
     };
-  }, [isMounted, modelId]);
+  }, [isMounted, modelId, onProgress]);
 
   if (!isMounted) return null;
 
