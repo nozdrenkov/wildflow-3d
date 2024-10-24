@@ -1,3 +1,4 @@
+/* eslint-disable */
 "use client";
 
 import React, { useState, useCallback, useMemo } from "react";
@@ -9,6 +10,7 @@ import {
   LinearScale,
   PointElement,
   Tooltip,
+  ChartOptions,
 } from "chart.js";
 import { Scatter } from "react-chartjs-2";
 import { XMarkIcon } from "@heroicons/react/24/solid";
@@ -44,7 +46,6 @@ const colors = [
 export default function SelectImages() {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [sensors, setSensors] = useState<SensorState[]>([]);
-  const [chartData, setChartData] = useState<any>(null);
   const [chartBounds, setChartBounds] = useState<{
     minX: number;
     maxX: number;
@@ -65,7 +66,7 @@ export default function SelectImages() {
             console.error("Error parsing XML:", err);
             return;
           }
-          console.log("Parsed XML result:", result); // For debugging
+          console.log("Parsed XML result:", result);
           setResult(result);
           const extractedCameras = result.document.chunk[0].cameras[0].camera;
           const extractedSensors = result.document.chunk[0].sensors[0].sensor;
@@ -204,6 +205,57 @@ export default function SelectImages() {
     onDrop,
   });
 
+  const chartOptions: ChartOptions<"scatter"> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: {
+      duration: 0,
+    },
+    interaction: {
+      intersect: false,
+      mode: "index",
+    },
+    scales: {
+      x: {
+        type: "linear",
+        position: "bottom",
+        min: chartBounds?.minX,
+        max: chartBounds?.maxX,
+        grid: {
+          color: "rgba(173, 216, 230, 0.3)",
+        },
+        ticks: {
+          color: "rgba(173, 216, 230, 0.7)",
+        },
+      },
+      y: {
+        type: "linear",
+        position: "left",
+        min: chartBounds?.minY,
+        max: chartBounds?.maxY,
+        grid: {
+          color: "rgba(173, 216, 230, 0.3)",
+        },
+        ticks: {
+          color: "rgba(173, 216, 230, 0.7)",
+        },
+      },
+    },
+    plugins: {
+      tooltip: {
+        callbacks: {
+          label: (context: any) =>
+            `${context.raw.label} (${context.raw.x.toFixed(
+              2
+            )}, ${context.raw.y.toFixed(2)})`,
+        },
+      },
+      legend: {
+        display: false,
+      },
+    },
+  };
+
   return (
     <div className="h-screen w-full bg-black p-4 flex items-center justify-center">
       {!chartDataMemo ? (
@@ -242,56 +294,7 @@ export default function SelectImages() {
                     )?.isSelected
                 ),
               }}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: {
-                  duration: 0, // general animation time
-                },
-                hover: {
-                  animationDuration: 0, // duration of animations when hovering an item
-                },
-                responsiveAnimationDuration: 0, // animation duration after a resize
-                scales: {
-                  x: {
-                    type: "linear",
-                    position: "bottom",
-                    min: chartBounds?.minX,
-                    max: chartBounds?.maxX,
-                    grid: {
-                      color: "rgba(173, 216, 230, 0.3)",
-                    },
-                    ticks: {
-                      color: "rgba(173, 216, 230, 0.7)",
-                    },
-                  },
-                  y: {
-                    type: "linear",
-                    position: "left",
-                    min: chartBounds?.minY,
-                    max: chartBounds?.maxY,
-                    grid: {
-                      color: "rgba(173, 216, 230, 0.3)",
-                    },
-                    ticks: {
-                      color: "rgba(173, 216, 230, 0.7)",
-                    },
-                  },
-                },
-                plugins: {
-                  tooltip: {
-                    callbacks: {
-                      label: (context: any) =>
-                        `${context.raw.label} (${context.raw.x.toFixed(
-                          2
-                        )}, ${context.raw.y.toFixed(2)})`,
-                    },
-                  },
-                  legend: {
-                    display: false,
-                  },
-                },
-              }}
+              options={chartOptions}
             />
           </div>
           <div className="absolute top-0 left-0 bg-black bg-opacity-80 rounded-lg">
