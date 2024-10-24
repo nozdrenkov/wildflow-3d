@@ -222,22 +222,48 @@ export default function SelectImages() {
       }));
   }, [datasets, sensors]);
 
-  const [plotLayout, setPlotLayout] = useState(() => ({
-    autosize: true,
-    plot_bgcolor: "black",
-    paper_bgcolor: "black",
-    font: { color: "white" },
-    xaxis: {
-      gridcolor: "rgba(173, 216, 230, 0.3)",
-    },
-    yaxis: {
-      gridcolor: "rgba(173, 216, 230, 0.3)",
-    },
-    dragmode: "select",
-    hovermode: "closest",
-    selectdirection: "any",
-    showlegend: false,
-  }));
+  const calculateBoundingBox = useCallback(() => {
+    let minX = Infinity,
+      maxX = -Infinity,
+      minY = Infinity,
+      maxY = -Infinity;
+    datasets.forEach((dataset) => {
+      dataset.data.forEach((point) => {
+        if (point.x < minX) minX = point.x;
+        if (point.x > maxX) maxX = point.x;
+        if (point.y < minY) minY = point.y;
+        if (point.y > maxY) maxY = point.y;
+      });
+    });
+    const xMargin = (maxX - minX) * 0.1;
+    const yMargin = (maxY - minY) * 0.1;
+    return {
+      xRange: [minX - xMargin, maxX + xMargin],
+      yRange: [minY - yMargin, maxY + yMargin],
+    };
+  }, [datasets]);
+
+  const [plotLayout, setPlotLayout] = useState(() => {
+    const { xRange, yRange } = calculateBoundingBox();
+    return {
+      autosize: true,
+      plot_bgcolor: "black",
+      paper_bgcolor: "black",
+      font: { color: "white" },
+      xaxis: {
+        gridcolor: "rgba(173, 216, 230, 0.3)",
+        range: xRange,
+      },
+      yaxis: {
+        gridcolor: "rgba(173, 216, 230, 0.3)",
+        range: yRange,
+      },
+      dragmode: "select",
+      hovermode: "closest",
+      selectdirection: "any",
+      showlegend: false,
+    };
+  });
 
   const updateURL = useCallback(
     (
@@ -273,35 +299,46 @@ export default function SelectImages() {
 
   const countSelectedPoints = useCallback(
     (minX: number, maxX: number, minY: number, maxY: number) => {
-      return datasets.reduce((count, dataset) => {
-        return (
-          count +
-          dataset.data.filter(
-            (point) =>
-              point.x >= minX &&
-              point.x <= maxX &&
-              point.y >= minY &&
-              point.y <= maxY
-          ).length
-        );
-      }, 0);
+      return datasets
+        .filter((dataset) =>
+          sensors.find(
+            (sensor) =>
+              sensor.id === dataset.label.split(":")[0] && sensor.isSelected
+          )
+        )
+        .reduce((count, dataset) => {
+          return (
+            count +
+            dataset.data.filter(
+              (point) =>
+                point.x >= minX &&
+                point.x <= maxX &&
+                point.y >= minY &&
+                point.y <= maxY
+            ).length
+          );
+        }, 0);
     },
-    [datasets]
+    [datasets, sensors]
   );
 
   useEffect(() => {
+    const { xRange, yRange } = calculateBoundingBox();
+    setPlotLayout((prevLayout) => ({
+      ...prevLayout,
+      xaxis: { ...prevLayout.xaxis, range: xRange },
+      yaxis: { ...prevLayout.yaxis, range: yRange },
+    }));
+
     const selectionFromURL = getSelectionFromURL();
     if (selectionFromURL) {
       const { minX, maxX, minY, maxY } = selectionFromURL;
-      setPlotLayout((prevLayout) => ({
-        ...prevLayout,
-        xaxis: { ...prevLayout.xaxis, range: [minX, maxX] },
-        yaxis: { ...prevLayout.yaxis, range: [minY, maxY] },
-      }));
       const selected = countSelectedPoints(minX, maxX, minY, maxY);
       setSelectedPoints(selected);
+    } else {
+      setSelectedPoints(0);
     }
-  }, [getSelectionFromURL, countSelectedPoints]);
+  }, [calculateBoundingBox, getSelectionFromURL, countSelectedPoints]);
 
   const handleSelectionComplete = useCallback(
     (eventData: any) => {
@@ -320,16 +357,41 @@ export default function SelectImages() {
   );
 
   const toggleSensor = useCallback(
-    (id: string) =>
+    (id: string) => {
       setSensors((prev) =>
         prev.map((sensor) =>
           sensor.id === id
             ? { ...sensor, isSelected: !sensor.isSelected }
             : sensor
         )
-      ),
-    []
+      );
+
+      // Update bounding box and selected points count
+      const { xRange, yRange } = calculateBoundingBox();
+      setPlotLayout((prevLayout) => ({
+        ...prevLayout,
+        xaxis: { ...prevLayout.xaxis, range: xRange },
+        yaxis: { ...prevLayout.yaxis, range: yRange },
+      }));
+
+      const selectionFromURL = getSelectionFromURL();
+      if (selectionFromURL) {
+        const { minX, maxX, minY, maxY } = selectionFromURL;
+        const selected = countSelectedPoints(minX, maxX, minY, maxY);
+        setSelectedPoints(selected);
+      } else {
+        setSelectedPoints(0);
+      }
+    },
+    [calculateBoundingBox, getSelectionFromURL, countSelectedPoints]
   );
+
+  const plotConfig = {
+    displayModeBar: true,
+    modeBarButtonsToRemove: ["toImage", "sendDataToCloud"],
+    displaylogo: false,
+    responsive: true,
+  };
 
   return (
     <div className="h-screen w-full bg-black p-4 flex items-center justify-center">
@@ -363,13 +425,14 @@ export default function SelectImages() {
               ref={plotRef}
               data={plotData}
               layout={plotLayout}
-              config={{ responsive: true }}
+              config={plotConfig}
               style={{ width: "100%", height: "100%" }}
               onSelected={handleSelectionComplete}
               onDeselect={() => {
                 updateURL(null, null, null, null);
                 setSelectedPoints(0);
               }}
+              className="plotly-bottom-right"
             />
           </div>
           <div className="absolute top-0 left-0 bg-black bg-opacity-80 rounded-lg p-2">
