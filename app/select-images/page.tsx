@@ -1,21 +1,21 @@
 /* eslint-disable */
 "use client";
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useEffect,
+} from "react";
 import { useDropzone } from "react-dropzone";
 import { parseString } from "xml2js";
-import {
-  Chart as ChartJS,
-  ScatterController,
-  LinearScale,
-  PointElement,
-  Tooltip,
-  ChartOptions,
-} from "chart.js";
-import { Scatter } from "react-chartjs-2";
+import dynamic from "next/dynamic";
 import { XMarkIcon } from "@heroicons/react/24/solid";
+import { useRouter, useSearchParams } from "next/navigation";
 
-ChartJS.register(ScatterController, LinearScale, PointElement, Tooltip);
+// Dynamically import Plotly component
+const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 // Types
 type Camera = {
@@ -163,12 +163,24 @@ const calculateChartData = (
   return { datasets, chartBounds };
 };
 
+// New types and interfaces
+type SelectionRect = {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+};
+
 // Main Component
 export default function SelectImages() {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [sensors, setSensors] = useState<SensorState[]>([]);
   const [result, setResult] = useState<any>(null);
   const [useGlobalCoordinates, setUseGlobalCoordinates] = useState(true);
+  const [selectedPoints, setSelectedPoints] = useState<number>(0);
+  const plotRef = useRef<any>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -191,50 +203,133 @@ export default function SelectImages() {
     return calculateChartData(cameras, sensors, result, useGlobalCoordinates);
   }, [cameras, sensors, result, useGlobalCoordinates]);
 
-  const chartOptions: ChartOptions<"scatter"> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 0 },
-    interaction: { intersect: false, mode: "index" },
-    scales: {
-      x: {
-        type: "linear",
-        position: "bottom",
-        min: chartBounds?.minX,
-        max: chartBounds?.maxX,
-        grid: { color: "rgba(173, 216, 230, 0.3)" },
-        ticks: { color: "rgba(173, 216, 230, 0.7)" },
-      },
-      y: {
-        type: "linear",
-        position: "left",
-        min: chartBounds?.minY,
-        max: chartBounds?.maxY,
-        grid: { color: "rgba(173, 216, 230, 0.3)" },
-        ticks: { color: "rgba(173, 216, 230, 0.7)" },
-      },
-    },
-    plugins: {
-      tooltip: {
-        callbacks: {
-          label: (context: any) =>
-            `${context.raw.label} (${context.raw.x.toFixed(
-              2
-            )}, ${context.raw.y.toFixed(2)})`,
-        },
-      },
-      legend: { display: false },
-    },
-  };
-
-  const toggleSensor = (id: string) =>
-    setSensors((prev) =>
-      prev.map((sensor) =>
-        sensor.id === id
-          ? { ...sensor, isSelected: !sensor.isSelected }
-          : sensor
+  const plotData = useMemo(() => {
+    return datasets
+      .filter((dataset) =>
+        sensors.find(
+          (sensor) =>
+            sensor.id === dataset.label.split(":")[0] && sensor.isSelected
+        )
       )
-    );
+      .map((dataset) => ({
+        x: dataset.data.map((point) => point.x),
+        y: dataset.data.map((point) => point.y),
+        text: dataset.data.map((point) => point.label),
+        mode: "markers",
+        type: "scatter",
+        name: dataset.label,
+        marker: { color: dataset.backgroundColor, size: 5 },
+      }));
+  }, [datasets, sensors]);
+
+  const [plotLayout, setPlotLayout] = useState(() => ({
+    autosize: true,
+    plot_bgcolor: "black",
+    paper_bgcolor: "black",
+    font: { color: "white" },
+    xaxis: {
+      gridcolor: "rgba(173, 216, 230, 0.3)",
+    },
+    yaxis: {
+      gridcolor: "rgba(173, 216, 230, 0.3)",
+    },
+    dragmode: "select",
+    hovermode: "closest",
+    selectdirection: "any",
+    showlegend: false,
+  }));
+
+  const updateURL = useCallback(
+    (
+      minX: number | null,
+      maxX: number | null,
+      minY: number | null,
+      maxY: number | null
+    ) => {
+      const params = new URLSearchParams();
+      if (minX !== null && maxX !== null && minY !== null && maxY !== null) {
+        params.set("minX", minX.toString());
+        params.set("maxX", maxX.toString());
+        params.set("minY", minY.toString());
+        params.set("maxY", maxY.toString());
+      }
+      router.push(`?${params.toString()}`);
+    },
+    [router]
+  );
+
+  const getSelectionFromURL = useCallback(() => {
+    const minX = parseFloat(searchParams.get("minX") || "");
+    const maxX = parseFloat(searchParams.get("maxX") || "");
+    const minY = parseFloat(searchParams.get("minY") || "");
+    const maxY = parseFloat(searchParams.get("maxY") || "");
+
+    if (isNaN(minX) || isNaN(maxX) || isNaN(minY) || isNaN(maxY)) {
+      return null;
+    }
+
+    return { minX, maxX, minY, maxY };
+  }, [searchParams]);
+
+  const countSelectedPoints = useCallback(
+    (minX: number, maxX: number, minY: number, maxY: number) => {
+      return datasets.reduce((count, dataset) => {
+        return (
+          count +
+          dataset.data.filter(
+            (point) =>
+              point.x >= minX &&
+              point.x <= maxX &&
+              point.y >= minY &&
+              point.y <= maxY
+          ).length
+        );
+      }, 0);
+    },
+    [datasets]
+  );
+
+  useEffect(() => {
+    const selectionFromURL = getSelectionFromURL();
+    if (selectionFromURL) {
+      const { minX, maxX, minY, maxY } = selectionFromURL;
+      setPlotLayout((prevLayout) => ({
+        ...prevLayout,
+        xaxis: { ...prevLayout.xaxis, range: [minX, maxX] },
+        yaxis: { ...prevLayout.yaxis, range: [minY, maxY] },
+      }));
+      const selected = countSelectedPoints(minX, maxX, minY, maxY);
+      setSelectedPoints(selected);
+    }
+  }, [getSelectionFromURL, countSelectedPoints]);
+
+  const handleSelectionComplete = useCallback(
+    (eventData: any) => {
+      if (eventData.points && eventData.points.length > 0) {
+        const [minX, maxX] = eventData.range.x;
+        const [minY, maxY] = eventData.range.y;
+        updateURL(minX, maxX, minY, maxY);
+        const selected = countSelectedPoints(minX, maxX, minY, maxY);
+        setSelectedPoints(selected);
+      } else {
+        updateURL(null, null, null, null);
+        setSelectedPoints(0);
+      }
+    },
+    [updateURL, countSelectedPoints]
+  );
+
+  const toggleSensor = useCallback(
+    (id: string) =>
+      setSensors((prev) =>
+        prev.map((sensor) =>
+          sensor.id === id
+            ? { ...sensor, isSelected: !sensor.isSelected }
+            : sensor
+        )
+      ),
+    []
+  );
 
   return (
     <div className="h-screen w-full bg-black p-4 flex items-center justify-center">
@@ -263,21 +358,21 @@ export default function SelectImages() {
           >
             <XMarkIcon className="h-6 w-6" />
           </button>
-          <div className="w-full h-full">
-            <Scatter
-              data={{
-                datasets: datasets.filter(
-                  (dataset) =>
-                    sensors.find(
-                      (sensor) =>
-                        `${sensor.id}: ${sensor.label}` === dataset.label
-                    )?.isSelected
-                ),
+          <div className="w-full h-full relative">
+            <Plot
+              ref={plotRef}
+              data={plotData}
+              layout={plotLayout}
+              config={{ responsive: true }}
+              style={{ width: "100%", height: "100%" }}
+              onSelected={handleSelectionComplete}
+              onDeselect={() => {
+                updateURL(null, null, null, null);
+                setSelectedPoints(0);
               }}
-              options={chartOptions}
             />
           </div>
-          <div className="absolute top-0 left-0 bg-black bg-opacity-80 rounded-lg">
+          <div className="absolute top-0 left-0 bg-black bg-opacity-80 rounded-lg p-2">
             <div className="flex items-center mb-4">
               <input
                 type="checkbox"
@@ -311,6 +406,11 @@ export default function SelectImages() {
                 </label>
               </div>
             ))}
+          </div>
+          <div className="absolute bottom-4 left-4 bg-black bg-opacity-80 rounded-lg p-2">
+            <p className="text-white text-xs">
+              Selected points: {selectedPoints}
+            </p>
           </div>
         </div>
       )}
