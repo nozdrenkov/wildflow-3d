@@ -14,10 +14,8 @@ import dynamic from "next/dynamic";
 import { XMarkIcon } from "@heroicons/react/24/solid";
 import { useRouter, useSearchParams } from "next/navigation";
 
-// Dynamically import Plotly component
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
-// Types
 type Camera = {
   $: { id: string; sensor_id: string; label: string };
   transform: string[];
@@ -30,7 +28,6 @@ type SensorState = {
   imageCount: number;
 };
 
-// Constants
 const COLORS = [
   "rgba(255, 99, 132, 0.7)",
   "rgba(54, 162, 235, 0.7)",
@@ -40,138 +37,18 @@ const COLORS = [
   "rgba(255, 159, 64, 0.7)",
 ];
 
-// Helper Functions
 const multiplyMatrices = (a: number[][], b: number[][]) =>
   a.map((row, i) =>
     b[0].map((_, j) => row.reduce((acc, _, n) => acc + a[i][n] * b[n][j], 0))
   );
 
-const parseXML = (xmlContent: string): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    parseString(xmlContent, (err, result) => {
-      if (err) reject(err);
-      else resolve(result);
-    });
-  });
-};
+const parseXML = (xmlContent: string): Promise<any> =>
+  new Promise((resolve, reject) =>
+    parseString(xmlContent, (err, result) =>
+      err ? reject(err) : resolve(result)
+    )
+  );
 
-const extractCamerasAndSensors = (result: any) => {
-  const extractedCameras = result.document.chunk[0].cameras[0].camera;
-  const extractedSensors = result.document.chunk[0].sensors[0].sensor;
-  return { extractedCameras, extractedSensors };
-};
-
-const createSensorStates = (
-  extractedSensors: any[],
-  extractedCameras: Camera[]
-): SensorState[] => {
-  return extractedSensors.map((sensor: any, index: number) => ({
-    id: sensor.$.id,
-    label: sensor.$.label,
-    color: COLORS[index % COLORS.length],
-    isSelected: true,
-    imageCount: extractedCameras.filter(
-      (camera: Camera) => camera.$.sensor_id === sensor.$.id
-    ).length,
-  }));
-};
-
-const calculateChartData = (
-  cameras: Camera[],
-  sensors: SensorState[],
-  result: any,
-  useGlobalCoordinates: boolean
-) => {
-  const chunkTransform = result.document.chunk[0].transform[0];
-  const rotation = chunkTransform.rotation[0]._.split(" ").map(Number);
-  const translation = chunkTransform.translation[0]._.split(" ").map(Number);
-  const scale = parseFloat(chunkTransform.scale[0]._);
-
-  const chunkMatrix = [
-    [rotation[0], rotation[1], rotation[2], translation[0]],
-    [rotation[3], rotation[4], rotation[5], translation[1]],
-    [rotation[6], rotation[7], rotation[8], translation[2]],
-    [0, 0, 0, 1],
-  ];
-
-  let minX = Infinity,
-    maxX = -Infinity,
-    minY = Infinity,
-    maxY = -Infinity;
-
-  const datasets = sensors.map((sensor) => {
-    const sensorData = cameras
-      .filter((camera) => camera.$.sensor_id === sensor.id)
-      .map((camera) => {
-        const cameraTransform = camera.transform[0].split(" ").map(Number);
-        let x, y;
-
-        if (useGlobalCoordinates) {
-          const cameraMatrix = [
-            [
-              cameraTransform[0],
-              cameraTransform[1],
-              cameraTransform[2],
-              cameraTransform[3],
-            ],
-            [
-              cameraTransform[4],
-              cameraTransform[5],
-              cameraTransform[6],
-              cameraTransform[7],
-            ],
-            [
-              cameraTransform[8],
-              cameraTransform[9],
-              cameraTransform[10],
-              cameraTransform[11],
-            ],
-            [0, 0, 0, 1],
-          ];
-          const globalMatrix = multiplyMatrices(chunkMatrix, cameraMatrix);
-          x = globalMatrix[0][3] * scale;
-          y = globalMatrix[1][3] * scale;
-        } else {
-          x = cameraTransform[3];
-          y = cameraTransform[7];
-        }
-
-        minX = Math.min(minX, x);
-        maxX = Math.max(maxX, x);
-        minY = Math.min(minY, y);
-        maxY = Math.max(maxY, y);
-
-        return { x, y, label: camera.$.label };
-      });
-
-    return {
-      label: `${sensor.id}: ${sensor.label}`,
-      data: sensorData,
-      backgroundColor: sensor.color,
-      pointRadius: 5,
-    };
-  });
-
-  const margin = 0.1;
-  const chartBounds = {
-    minX: minX - (maxX - minX) * margin,
-    maxX: maxX + (maxX - minX) * margin,
-    minY: minY - (maxY - minY) * margin,
-    maxY: maxY + (maxY - minY) * margin,
-  };
-
-  return { datasets, chartBounds };
-};
-
-// New types and interfaces
-type SelectionRect = {
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-};
-
-// Main Component
 export default function SelectImages() {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [sensors, setSensors] = useState<SensorState[]>([]);
@@ -188,10 +65,20 @@ export default function SelectImages() {
       const xmlContent = await file.text();
       const result = await parseXML(xmlContent);
       setResult(result);
-      const { extractedCameras, extractedSensors } =
-        extractCamerasAndSensors(result);
+      const extractedCameras = result.document.chunk[0].cameras[0].camera;
+      const extractedSensors = result.document.chunk[0].sensors[0].sensor;
       setCameras(extractedCameras);
-      setSensors(createSensorStates(extractedSensors, extractedCameras));
+      setSensors(
+        extractedSensors.map((sensor: any, index: number) => ({
+          id: sensor.$.id,
+          label: sensor.$.label,
+          color: COLORS[index % COLORS.length],
+          isSelected: true,
+          imageCount: extractedCameras.filter(
+            (camera: Camera) => camera.$.sensor_id === sensor.$.id
+          ).length,
+        }))
+      );
     }
   }, []);
 
@@ -200,7 +87,76 @@ export default function SelectImages() {
   const { datasets, chartBounds } = useMemo(() => {
     if (cameras.length === 0 || sensors.length === 0 || !result)
       return { datasets: [], chartBounds: null };
-    return calculateChartData(cameras, sensors, result, useGlobalCoordinates);
+    const chunkTransform = result.document.chunk[0].transform[0];
+    const rotation = chunkTransform.rotation[0]._.split(" ").map(Number);
+    const translation = chunkTransform.translation[0]._.split(" ").map(Number);
+    const scale = parseFloat(chunkTransform.scale[0]._);
+    const chunkMatrix = [
+      [rotation[0], rotation[1], rotation[2], translation[0]],
+      [rotation[3], rotation[4], rotation[5], translation[1]],
+      [rotation[6], rotation[7], rotation[8], translation[2]],
+      [0, 0, 0, 1],
+    ];
+    let minX = Infinity,
+      maxX = -Infinity,
+      minY = Infinity,
+      maxY = -Infinity;
+    const datasets = sensors.map((sensor) => {
+      const sensorData = cameras
+        .filter((camera) => camera.$.sensor_id === sensor.id)
+        .map((camera) => {
+          const cameraTransform = camera.transform[0].split(" ").map(Number);
+          let x, y;
+          if (useGlobalCoordinates) {
+            const cameraMatrix = [
+              [
+                cameraTransform[0],
+                cameraTransform[1],
+                cameraTransform[2],
+                cameraTransform[3],
+              ],
+              [
+                cameraTransform[4],
+                cameraTransform[5],
+                cameraTransform[6],
+                cameraTransform[7],
+              ],
+              [
+                cameraTransform[8],
+                cameraTransform[9],
+                cameraTransform[10],
+                cameraTransform[11],
+              ],
+              [0, 0, 0, 1],
+            ];
+            const globalMatrix = multiplyMatrices(chunkMatrix, cameraMatrix);
+            x = globalMatrix[0][3] * scale;
+            y = globalMatrix[1][3] * scale;
+          } else {
+            x = cameraTransform[3];
+            y = cameraTransform[7];
+          }
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+          return { x, y, label: camera.$.label };
+        });
+      return {
+        label: `${sensor.id}: ${sensor.label}`,
+        data: sensorData,
+        backgroundColor: sensor.color,
+        pointRadius: 5,
+      };
+    });
+    const margin = 0.1;
+    const chartBounds = {
+      minX: minX - (maxX - minX) * margin,
+      maxX: maxX + (maxX - minX) * margin,
+      minY: minY - (maxY - minY) * margin,
+      maxY: maxY + (maxY - minY) * margin,
+    };
+    return { datasets, chartBounds };
   }, [cameras, sensors, result, useGlobalCoordinates]);
 
   const plotData = useMemo(() => {
@@ -229,10 +185,10 @@ export default function SelectImages() {
       maxY = -Infinity;
     datasets.forEach((dataset) => {
       dataset.data.forEach((point) => {
-        if (point.x < minX) minX = point.x;
-        if (point.x > maxX) maxX = point.x;
-        if (point.y < minY) minY = point.y;
-        if (point.y > maxY) maxY = point.y;
+        minX = Math.min(minX, point.x);
+        maxX = Math.max(maxX, point.x);
+        minY = Math.min(minY, point.y);
+        maxY = Math.max(maxY, point.y);
       });
     });
     const xMargin = (maxX - minX) * 0.1;
@@ -250,14 +206,8 @@ export default function SelectImages() {
       plot_bgcolor: "black",
       paper_bgcolor: "black",
       font: { color: "white" },
-      xaxis: {
-        gridcolor: "rgba(173, 216, 230, 0.3)",
-        range: xRange,
-      },
-      yaxis: {
-        gridcolor: "rgba(173, 216, 230, 0.3)",
-        range: yRange,
-      },
+      xaxis: { gridcolor: "rgba(173, 216, 230, 0.3)", range: xRange },
+      yaxis: { gridcolor: "rgba(173, 216, 230, 0.3)", range: yRange },
       dragmode: "select",
       hovermode: "closest",
       selectdirection: "any",
@@ -289,12 +239,9 @@ export default function SelectImages() {
     const maxX = parseFloat(searchParams.get("maxX") || "");
     const minY = parseFloat(searchParams.get("minY") || "");
     const maxY = parseFloat(searchParams.get("maxY") || "");
-
-    if (isNaN(minX) || isNaN(maxX) || isNaN(minY) || isNaN(maxY)) {
-      return null;
-    }
-
-    return { minX, maxX, minY, maxY };
+    return isNaN(minX) || isNaN(maxX) || isNaN(minY) || isNaN(maxY)
+      ? null
+      : { minX, maxX, minY, maxY };
   }, [searchParams]);
 
   const countSelectedPoints = useCallback(
@@ -329,12 +276,10 @@ export default function SelectImages() {
       xaxis: { ...prevLayout.xaxis, range: xRange },
       yaxis: { ...prevLayout.yaxis, range: yRange },
     }));
-
     const selectionFromURL = getSelectionFromURL();
     if (selectionFromURL) {
       const { minX, maxX, minY, maxY } = selectionFromURL;
-      const selected = countSelectedPoints(minX, maxX, minY, maxY);
-      setSelectedPoints(selected);
+      setSelectedPoints(countSelectedPoints(minX, maxX, minY, maxY));
     } else {
       setSelectedPoints(0);
     }
@@ -346,8 +291,7 @@ export default function SelectImages() {
         const [minX, maxX] = eventData.range.x;
         const [minY, maxY] = eventData.range.y;
         updateURL(minX, maxX, minY, maxY);
-        const selected = countSelectedPoints(minX, maxX, minY, maxY);
-        setSelectedPoints(selected);
+        setSelectedPoints(countSelectedPoints(minX, maxX, minY, maxY));
       } else {
         updateURL(null, null, null, null);
         setSelectedPoints(0);
@@ -365,20 +309,16 @@ export default function SelectImages() {
             : sensor
         )
       );
-
-      // Update bounding box and selected points count
       const { xRange, yRange } = calculateBoundingBox();
       setPlotLayout((prevLayout) => ({
         ...prevLayout,
         xaxis: { ...prevLayout.xaxis, range: xRange },
         yaxis: { ...prevLayout.yaxis, range: yRange },
       }));
-
       const selectionFromURL = getSelectionFromURL();
       if (selectionFromURL) {
         const { minX, maxX, minY, maxY } = selectionFromURL;
-        const selected = countSelectedPoints(minX, maxX, minY, maxY);
-        setSelectedPoints(selected);
+        setSelectedPoints(countSelectedPoints(minX, maxX, minY, maxY));
       } else {
         setSelectedPoints(0);
       }
