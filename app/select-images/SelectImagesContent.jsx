@@ -10,8 +10,7 @@ import React, {
 } from "react";
 import { useDropzone } from "react-dropzone";
 import { parseString } from "xml2js";
-import dynamic from "next/dynamic";
-import { XMarkIcon } from "@heroicons/react/24/solid";
+import { XMarkIcon, ArrowDownTrayIcon } from "@heroicons/react/24/solid";
 import { useRouter } from "next/navigation";
 
 import Plot from "./DynamicPlot";
@@ -308,6 +307,41 @@ export default function SelectImages({ searchParams }) {
     [calculateBoundingBox, getSelectionFromURL, countSelectedPoints]
   );
 
+  const handleDownload = useCallback(() => {
+    const selectionFromURL = getSelectionFromURL();
+    if (selectionFromURL) {
+      const { minX, maxX, minY, maxY } = selectionFromURL;
+      const selectedCameras = datasets
+        .filter((dataset) =>
+          sensors.find(
+            (sensor) =>
+              sensor.id === dataset.label.split(":")[0] && sensor.isSelected
+          )
+        )
+        .flatMap((dataset) =>
+          dataset.data.filter(
+            (point) =>
+              point.x >= minX &&
+              point.x <= maxX &&
+              point.y >= minY &&
+              point.y <= maxY
+          )
+        )
+        .map((point) => point.label);
+
+      const content = selectedCameras.join("\n");
+      const blob = new Blob([content], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "selected_cameras.txt";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+  }, [datasets, sensors, getSelectionFromURL]);
+
   const plotConfig = {
     displayModeBar: true,
     modeBarButtonsToRemove: ["toImage", "sendDataToCloud"],
@@ -338,7 +372,7 @@ export default function SelectImages({ searchParams }) {
               setCameras([]);
               setSensors([]);
             }}
-            className="absolute top-4 right-4 z-10 bg-red-500 hover:bg-red-700 text-white font-bold p-2 rounded-full"
+            className="absolute bottom-4 right-4 z-10 bg-red-500 hover:bg-red-700 text-white font-bold p-2 rounded-full"
           >
             <XMarkIcon className="h-6 w-6" />
           </button>
@@ -391,10 +425,18 @@ export default function SelectImages({ searchParams }) {
               </div>
             ))}
           </div>
-          <div className="absolute bottom-4 left-4 bg-black bg-opacity-80 rounded-lg p-2">
-            <p className="text-white text-xs">
+          <div className="absolute bottom-4 left-4 bg-black bg-opacity-80 rounded-lg p-2 flex items-center">
+            <p className="text-white text-xs mr-4 w-32">
               Selected points: {selectedPoints}
             </p>
+            <button
+              onClick={handleDownload}
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded flex items-center"
+              disabled={selectedPoints === 0}
+            >
+              <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
+              <span className="text-xs">Download</span>
+            </button>
           </div>
         </div>
       )}
