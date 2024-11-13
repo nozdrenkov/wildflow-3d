@@ -16,13 +16,6 @@ function createDebuggedViewer(options) {
   return new GaussianSplats3D.Viewer(options);
 }
 
-const KSPLAT_FILES = [
-  "/trained_export_m7_1_8_adc_1s_0x_-3y.ksplat",
-  "/trained_export_m7_1_8_adc_1s_0x_-4y.ply",
-  "/trained_export_m7_1_8_adc_1s_0x_-5y.ksplat",
-  "/trained_export_m7_1_8_adc_1s_0x_-6y.ksplat",
-];
-
 export default function Viewer3D({ modelId, onProgress }) {
   const viewerRef = useRef(null);
   const viewerInstanceRef = useRef(null);
@@ -55,23 +48,37 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     viewerInstanceRef.current = viewer;
 
-    // Load scenes sequentially with proper cleanup handling
+    // Updated loading function
     const loadScenes = async () => {
       try {
-        for (let i = 0; i < KSPLAT_FILES.length; i++) {
-          await viewer.addSplatScene(KSPLAT_FILES[i], {
-            splatAlphaRemovalThreshold: 20,
-            position: [0, 0, 0],
-            rotation: [0, 0, 0, 1],
-            scale: [1, 1, 1],
-            showLoadingUI: false,
-          });
+        // Load the JSON file
+        const response = await fetch(`/${modelId}.json`);
+        const modelData = await response.json();
+
+        // For each patch in the JSON
+        for (const patch of modelData.patches) {
+          const baseFileName = patch.patch.replace(".ply", "");
+          const gridStep = patch.grid_step;
+
+          // Load each cell
+          for (const [cellX, cellY] of patch.cells) {
+            const filePath = `grid-${gridStep}/${baseFileName}_${gridStep}s_${cellX}x_${cellY}y.ply`;
+
+            await viewer.addSplatScene(filePath, {
+              splatAlphaRemovalThreshold: 20,
+              position: [0, 0, 0],
+              rotation: [0, 0, 0, 1],
+              scale: [1, 1, 1],
+              showLoadingUI: false,
+            });
+          }
         }
+
         if (viewerInstanceRef.current) {
           viewerInstanceRef.current.start();
         }
       } catch (error) {
-        console.error("Error loading ksplat files:", error);
+        console.error("Error loading scene files:", error);
       }
     };
 
