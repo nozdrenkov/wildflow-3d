@@ -1,20 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
-// eslint-disable-next-line
-import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
-
-// Add this function at the top of your file, outside of the component
-// eslint-disable-next-line
-function createDebuggedViewer(options) {
-  const originalProgressCallback = options.progressCallback;
-  options.progressCallback = (percent, message) => {
-    if (originalProgressCallback) {
-      originalProgressCallback(percent, message);
-    }
-  };
-  return new GaussianSplats3D.Viewer(options);
-}
 
 export default function Viewer3D({ modelId, onProgress }) {
   const viewerRef = useRef(null);
@@ -29,6 +15,7 @@ export default function Viewer3D({ modelId, onProgress }) {
     if (!isMounted || !viewerRef.current) return;
 
     const currentViewerRef = viewerRef.current;
+    const scene = new THREE.Scene();
 
     const viewer = new GaussianSplats3D.Viewer({
       cameraUp: [0, 1, 0],
@@ -39,7 +26,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       sharedMemoryForWorkers: false,
       dynamicScene: true,
       sceneRevealMode: GaussianSplats3D.SceneRevealMode.Instant,
-      threeScene: new THREE.Scene(),
+      threeScene: scene,
       useWorkers: true,
       progressCallback: (percent, message) => {
         onProgress(percent, message);
@@ -48,22 +35,35 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     viewerInstanceRef.current = viewer;
 
-    // Updated loading function
     const loadScenes = async () => {
       try {
-        // Load the JSON file
         const response = await fetch(`/${modelId}.json`);
         const modelData = await response.json();
 
-        // For each patch in the JSON
         for (const patch of modelData.patches) {
           const baseFileName = patch.patch.replace(".ply", "");
           const gridStep = patch.grid_step;
+          const averageZ = patch.average_z;
 
-          // Load each cell
+          const sphereGeometry = new THREE.SphereGeometry(gridStep / 6, 32, 32);
+          const sphereMaterial = new THREE.MeshBasicMaterial({
+            color: 0x0000ff,
+          });
+
+          for (const [cellX, cellY] of patch.cells) {
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+
+            sphere.position.set(
+              cellX + gridStep / 2,
+              cellY + gridStep / 2,
+              averageZ
+            );
+
+            scene.add(sphere);
+          }
+
           for (const [cellX, cellY] of patch.cells) {
             const filePath = `grid-${gridStep}/${baseFileName}_${gridStep}s_${cellX}x_${cellY}y.ply`;
-
             await viewer.addSplatScene(filePath, {
               splatAlphaRemovalThreshold: 20,
               position: [0, 0, 0],
@@ -110,6 +110,13 @@ export default function Viewer3D({ modelId, onProgress }) {
 
         viewerInstanceRef.current = null;
       }
+
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          object.material.dispose();
+        }
+      });
     };
   }, [isMounted, modelId, onProgress]);
 
