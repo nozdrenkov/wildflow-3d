@@ -5,8 +5,8 @@ import * as THREE from "three";
 const CELL_VISIBILITY_THRESHOLD = 10; // Distance in meters when cells switch between spheres and splats
 const MAX_LOADED_CELLS = 3; // Maximum number of simultaneously loaded cell splats
 const CELL_UNLOAD_CHECK_INTERVAL = 1000; // How often to check for cells to unload (ms)
-const TEST_CELL = { x: 0, y: -3 };
 const DISABLE_AUTO_VISIBILITY = true;
+const POSITION_CHECK_INTERVAL = 333; // Check camera position every 1/3 second
 
 export default function Viewer3D({ modelId, onProgress }) {
   const viewerRef = useRef(null);
@@ -15,7 +15,8 @@ export default function Viewer3D({ modelId, onProgress }) {
   const loadedCells = useRef(new Map());
   const cellLoadQueue = useRef(new Set());
   const lastUnloadCheck = useRef(0);
-  const [testCellEnabled, setTestCellEnabled] = useState(false);
+  const lastPositionCheck = useRef(0);
+  const pendingLoads = useRef(new Set());
 
   useEffect(() => {
     setIsMounted(true);
@@ -131,28 +132,17 @@ export default function Viewer3D({ modelId, onProgress }) {
   }, [isMounted, modelId, onProgress]);
 
   const processLoadQueue = async () => {
-    if (cellLoadQueue.current.size === 0) return;
+    if (pendingLoads.current.size === 0) return;
+    if (viewerInstanceRef.current.isLoadingOrUnloading()) return;
 
-    const loadedCount = Array.from(loadedCells.current.values()).filter(
-      (cell) => cell.loaded
-    ).length;
-
-    if (loadedCount >= MAX_LOADED_CELLS) return;
-
-    const [nextCellKey] = cellLoadQueue.current;
+    // Take the first pending cell
+    const [nextCellKey] = pendingLoads.current;
     const cellData = loadedCells.current.get(nextCellKey);
-    cellLoadQueue.current.delete(nextCellKey);
+    pendingLoads.current.delete(nextCellKey);
 
     if (!cellData || cellData.loaded || cellData.loading) return;
 
     try {
-      // Check if viewer is currently loading or unloading
-      if (viewerInstanceRef.current.isLoadingOrUnloading()) {
-        // Put the cell back in the queue for later processing
-        cellLoadQueue.current.add(nextCellKey);
-        return;
-      }
-
       cellData.loading = true;
       await viewerInstanceRef.current.addSplatScene(cellData.filePath, {
         splatAlphaRemovalThreshold: 20,
@@ -164,13 +154,12 @@ export default function Viewer3D({ modelId, onProgress }) {
       cellData.loaded = true;
       cellData.loading = false;
       cellData.lastUsed = Date.now();
+      cellData.sphere.visible = false;
     } catch (error) {
       console.error(`Error loading cell ${nextCellKey}:`, error);
       cellData.loading = false;
-      // Put the cell back in the queue if it was a loading conflict
-      if (error.message.includes("Cannot add splat scene while another")) {
-        cellLoadQueue.current.add(nextCellKey);
-      }
+      cellData.sphere.material.color.setHex(0x0000ff); // Reset to blue if error
+      pendingLoads.current.delete(nextCellKey);
     }
   };
 
@@ -179,161 +168,82 @@ export default function Viewer3D({ modelId, onProgress }) {
     if (!cellData || !cellData.loaded) return;
 
     try {
-      if (viewerInstanceRef.current.isLoadingOrUnloading()) {
-        return;
-      }
+      if (viewerInstanceRef.current.isLoadingOrUnloading()) return;
 
+      // Force remove all scenes
       const sceneCount = viewerInstanceRef.current.getSceneCount();
-      const scenesToRemove = [];
-
-      // Find all scenes that match our cell
-      for (let i = 0; i < sceneCount; i++) {
-        const scene = viewerInstanceRef.current.getSplatScene(i);
-        if (scene && scene.url === cellData.filePath) {
-          scenesToRemove.push(i);
-        }
-      }
-
-      if (scenesToRemove.length > 0) {
+      if (sceneCount > 0) {
         // Force cleanup before removal
         if (viewerInstanceRef.current.splatMesh) {
           viewerInstanceRef.current.splatMesh.disposeSplatTree();
         }
-
-        // Remove scenes in reverse order to maintain correct indices
-        for (let i = scenesToRemove.length - 1; i >= 0; i--) {
-          await viewerInstanceRef.current.removeSplatScenes(
-            [scenesToRemove[i]],
-            false
-          );
-        }
-
-        // Force a new sort to update visibility
-        await viewerInstanceRef.current.runSplatSort(true, true);
-
-        cellData.loaded = false;
-        cellData.sphere.visible = true;
+        const scenesToRemove = Array.from({ length: sceneCount }, (_, i) => i);
+        await viewerInstanceRef.current.removeSplatScenes(
+          scenesToRemove,
+          false
+        );
       }
+
+      cellData.loaded = false;
+      cellData.loading = false;
+      cellData.sphere.material.color.setHex(0x0000ff); // Blue
+      cellData.sphere.visible = true;
     } catch (error) {
       console.error(`Error unloading cell ${cellKey}:`, error);
-    }
-  };
-
-  const checkCellsToUnload = () => {
-    const loadedCellsArray = Array.from(loadedCells.current.values())
-      .filter((cell) => cell.loaded)
-      .sort((a, b) => a.lastUsed - b.lastUsed);
-
-    while (loadedCellsArray.length > MAX_LOADED_CELLS) {
-      const oldestCell = loadedCellsArray.shift();
-      if (oldestCell) {
-        const cellKey = Array.from(loadedCells.current.entries()).find(
-          ([_, cell]) => cell === oldestCell
-        )?.[0];
-        if (cellKey) {
-          unloadCell(cellKey);
-        }
-      }
     }
   };
 
   const updateCellVisibility = () => {
     if (!viewerInstanceRef.current || !viewerInstanceRef.current.camera) return;
 
-    const camera = viewerInstanceRef.current.camera;
     const currentTime = Date.now();
+    if (currentTime - lastPositionCheck.current < POSITION_CHECK_INTERVAL) {
+      return;
+    }
+    lastPositionCheck.current = currentTime;
 
-    // First, update all sphere visibilities based on distance
-    for (const [cellKey, cellData] of loadedCells.current) {
-      // Skip the test cell
-      if (cellKey === `${TEST_CELL.x},${TEST_CELL.y}`) continue;
+    const camera = viewerInstanceRef.current.camera;
 
-      const distance = camera.position.distanceTo(cellData.center);
+    // Calculate distances for all cells
+    const cellDistances = Array.from(loadedCells.current.entries()).map(
+      ([key, cell]) => ({
+        key,
+        cell,
+        distance: camera.position.distanceTo(cell.center),
+      })
+    );
 
-      if (distance > CELL_VISIBILITY_THRESHOLD) {
-        cellData.sphere.visible = true;
-        if (cellData.loaded) {
-          unloadCell(cellKey);
-        }
-      } else {
-        cellData.sphere.visible = false;
-        if (!cellData.loaded && !cellData.loading) {
-          cellLoadQueue.current.add(cellKey);
-        }
+    // Sort by distance
+    cellDistances.sort((a, b) => a.distance - b.distance);
+
+    // Get the closest cells within threshold
+    const closeCells = cellDistances.filter(
+      ({ distance }) => distance <= CELL_VISIBILITY_THRESHOLD
+    );
+    const closestCells = closeCells.slice(0, MAX_LOADED_CELLS);
+    const closestCellKeys = new Set(closestCells.map((c) => c.key));
+
+    // First, unload any cells that shouldn't be visible
+    for (const [key, cell] of loadedCells.current) {
+      if (cell.loaded && !closestCellKeys.has(key)) {
+        unloadCell(key);
       }
     }
 
-    if (currentTime - lastUnloadCheck.current > CELL_UNLOAD_CHECK_INTERVAL) {
-      checkCellsToUnload();
-      lastUnloadCheck.current = currentTime;
+    // Reset pending loads
+    pendingLoads.current.clear();
+
+    // Update closest cells
+    for (const { key, cell } of closestCells) {
+      if (!cell.loaded && !cell.loading) {
+        pendingLoads.current.add(key);
+        cell.sphere.material.color.setHex(0xffa500); // Orange for pending load
+      }
+      cell.sphere.visible = !cell.loaded;
     }
 
+    // Process any pending loads
     processLoadQueue();
-  };
-
-  const toggleTestCell = async () => {
-    const cellKey = `${TEST_CELL.x},${TEST_CELL.y}`;
-    const cellData = loadedCells.current.get(cellKey);
-
-    if (!cellData) return;
-
-    try {
-      if (testCellEnabled) {
-        // Turn off - force remove all scenes
-        const sceneCount = viewerInstanceRef.current.getSceneCount();
-        if (sceneCount > 0) {
-          const scenesToRemove = Array.from(
-            { length: sceneCount },
-            (_, i) => i
-          );
-          await viewerInstanceRef.current.removeSplatScenes(
-            scenesToRemove,
-            false
-          );
-        }
-        cellData.loaded = false;
-        cellData.loading = false;
-        cellData.sphere.material.color.setHex(0x0000ff); // Blue
-        cellData.sphere.visible = true;
-      } else {
-        // Turn on
-        cellData.sphere.material.color.setHex(0xffa500); // Orange
-        cellData.sphere.visible = true;
-        cellData.loading = true;
-
-        // Make sure no other scenes are loaded
-        const sceneCount = viewerInstanceRef.current.getSceneCount();
-        if (sceneCount > 0) {
-          const scenesToRemove = Array.from(
-            { length: sceneCount },
-            (_, i) => i
-          );
-          await viewerInstanceRef.current.removeSplatScenes(
-            scenesToRemove,
-            false
-          );
-        }
-
-        await viewerInstanceRef.current.addSplatScene(cellData.filePath, {
-          splatAlphaRemovalThreshold: 20,
-          position: [0, 0, 0],
-          rotation: [0, 0, 0, 1],
-          scale: [1, 1, 1],
-          showLoadingUI: false,
-        });
-
-        cellData.loaded = true;
-        cellData.loading = false;
-        cellData.lastUsed = Date.now();
-        cellData.sphere.visible = false;
-      }
-
-      setTestCellEnabled(!testCellEnabled);
-    } catch (error) {
-      console.error("Error toggling test cell:", error);
-      cellData.loading = false;
-      cellData.sphere.material.color.setHex(0x0000ff); // Reset to blue if error
-    }
   };
 
   useEffect(() => {
@@ -351,26 +261,5 @@ export default function Viewer3D({ modelId, onProgress }) {
 
   if (!isMounted) return null;
 
-  return (
-    <>
-      <button
-        onClick={toggleTestCell}
-        style={{
-          position: "absolute",
-          top: "20px",
-          left: "20px",
-          zIndex: 1000,
-          padding: "10px",
-          backgroundColor: testCellEnabled ? "red" : "green",
-          color: "white",
-          border: "none",
-          borderRadius: "5px",
-          cursor: "pointer",
-        }}
-      >
-        Test Cell {testCellEnabled ? "OFF" : "ON"}
-      </button>
-      <div ref={viewerRef} style={{ width: "100%", height: "100vh" }} />
-    </>
-  );
+  return <div ref={viewerRef} style={{ width: "100%", height: "100vh" }} />;
 }
