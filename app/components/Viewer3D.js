@@ -16,7 +16,12 @@ function createDebuggedViewer(options) {
   return new GaussianSplats3D.Viewer(options);
 }
 
-const _LOCAL_DATA = false;
+const KSPLAT_FILES = [
+  "/trained_export_m7_1_8_adc_1s_0x_-3y.ksplat",
+  "/trained_export_m7_1_8_adc_1s_0x_-4y.ply",
+  "/trained_export_m7_1_8_adc_1s_0x_-5y.ksplat",
+  "/trained_export_m7_1_8_adc_1s_0x_-6y.ksplat",
+];
 
 export default function Viewer3D({ modelId, onProgress }) {
   const viewerRef = useRef(null);
@@ -32,58 +37,45 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     const currentViewerRef = viewerRef.current;
 
-    const prefix = _LOCAL_DATA
-      ? `/${modelId}`
-      : `https://storage.googleapis.com/wildflow/${modelId}`;
-    const modelUrl = `${prefix}/splats.ksplat`;
-    const cameraUrl = `${prefix}/camera.json`;
+    const viewer = new GaussianSplats3D.Viewer({
+      cameraUp: [0, 1, 0],
+      initialCameraPosition: [0, 0, 5],
+      initialCameraLookAt: [0, 0, 0],
+      rootElement: viewerRef.current,
+      selfDrivenMode: true,
+      sharedMemoryForWorkers: false,
+      dynamicScene: true,
+      sceneRevealMode: GaussianSplats3D.SceneRevealMode.Instant,
+      threeScene: new THREE.Scene(),
+      useWorkers: true,
+      progressCallback: (percent, message) => {
+        onProgress(percent, message);
+      },
+    });
 
-    fetch(cameraUrl)
-      .then((response) => response.json())
-      .then((camera) => {
-        console.log(`Camera config: ${JSON.stringify(camera, null, 2)}`);
-        const viewer = new GaussianSplats3D.Viewer({
-          cameraUp: camera.cameraUp || [0.24929, -0.2672, -0.93084],
-          initialCameraPosition: camera.initialCameraPosition || [
-            -3.93951, 0.24631, -3.29199,
-          ],
-          initialCameraLookAt: camera.initialCameraLookAt || [
-            -1.01181, 0.18365, 4.45069,
-          ],
-          rootElement: viewerRef.current,
-          sceneRevealMode: GaussianSplats3D.SceneRevealMode.Gradual,
-          crossOrigin: "anonymous",
-          threeScene: new THREE.Scene(),
-          selfDrivenMode: true,
-          useWorkers: true,
-          workerConfig: {
-            crossOriginIsolated: true,
-          },
-          progressCallback: (percent, message) => {
-            onProgress(percent, message);
-          },
-        });
-        viewerInstanceRef.current = viewer;
+    viewerInstanceRef.current = viewer;
 
-        viewer
-          .addSplatScene(modelUrl, {
-            splatAlphaRemovalThreshold: 5,
+    // Load scenes sequentially with proper cleanup handling
+    const loadScenes = async () => {
+      try {
+        for (let i = 0; i < KSPLAT_FILES.length; i++) {
+          await viewer.addSplatScene(KSPLAT_FILES[i], {
+            splatAlphaRemovalThreshold: 20,
+            position: [0, 0, 0],
+            rotation: [0, 0, 0, 1],
+            scale: [1, 1, 1],
             showLoadingUI: false,
-            position: camera.position || [0, 1, 0],
-            rotation: camera.rotation || [0, 0, 0, 1],
-            scale: camera.scale || [1.5, 1.5, 1.5],
-            progressiveLoad: true,
-          })
-          .then(() => {
-            console.log("Splat scene added successfully");
-            if (viewerInstanceRef.current) {
-              viewerInstanceRef.current.start();
-            }
-          })
-          .catch((error) => {
-            console.error("Error adding splat scene:", error);
           });
-      });
+        }
+        if (viewerInstanceRef.current) {
+          viewerInstanceRef.current.start();
+        }
+      } catch (error) {
+        console.error("Error loading ksplat files:", error);
+      }
+    };
+
+    loadScenes();
 
     return () => {
       const viewer = viewerInstanceRef.current;
@@ -95,6 +87,7 @@ export default function Viewer3D({ modelId, onProgress }) {
 
         // Remove the scene
         if (viewer.splatMesh) {
+          viewer.splatMesh.disposeSplatTree();
           viewer.splatMesh.scene.remove(viewer.splatMesh);
         }
 
