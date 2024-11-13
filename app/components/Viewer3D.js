@@ -2,22 +2,181 @@ import { useEffect, useRef, useState } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
 
-const CELL_VISIBILITY_THRESHOLD = 10; // Distance in meters when cells switch between spheres and splats
-const MAX_LOADED_CELLS = 3; // Maximum number of simultaneously loaded cell splats
-const CELL_UNLOAD_CHECK_INTERVAL = 1000; // How often to check for cells to unload (ms)
-const DISABLE_AUTO_VISIBILITY = true;
-const POSITION_CHECK_INTERVAL = 333; // Check camera position every 1/3 second
+// Constants
+const CONSTANTS = {
+  CELL_VISIBILITY_THRESHOLD: 30, // Distance in meters when cells switch between spheres and splats
+  MAX_LOADED_CELLS: 20, // Maximum number of simultaneously loaded cell splats
+  SCENE_UPDATE_INTERVAL: 333, // Minimum time between scene updates (ms)
+  COLORS: {
+    BLUE: 0x0000ff, // Distant/unloaded cells
+    ORANGE: 0xffa500, // Loading cells
+  },
+};
+
+// Types (for documentation)
+/**
+ * @typedef {Object} CellData
+ * @property {THREE.Mesh} sphere - Visual representation when splats aren't loaded
+ * @property {THREE.Vector3} center - Cell's center position
+ * @property {boolean} loaded - Whether splats are currently loaded
+ * @property {boolean} loading - Whether splats are currently loading
+ * @property {string} filePath - Path to the cell's splat file
+ * @property {number} lastUsed - Timestamp of last usage
+ */
 
 export default function Viewer3D({ modelId, onProgress }) {
+  // Refs
   const viewerRef = useRef(null);
   const viewerInstanceRef = useRef(null);
-  const [isMounted, setIsMounted] = useState(false);
   const loadedCells = useRef(new Map());
-  const cellLoadQueue = useRef(new Set());
-  const lastUnloadCheck = useRef(0);
-  const lastPositionCheck = useRef(0);
   const pendingLoads = useRef(new Set());
+  const lastSceneUpdate = useRef(0);
+  const [isMounted, setIsMounted] = useState(false);
 
+  // Cell Management Functions
+  const unloadCell = async (cellKey) => {
+    const cellData = loadedCells.current.get(cellKey);
+    if (!cellData || !cellData.loaded) return;
+
+    try {
+      if (viewerInstanceRef.current.isLoadingOrUnloading()) return;
+
+      // Force cleanup and remove all scenes
+      if (viewerInstanceRef.current.splatMesh) {
+        viewerInstanceRef.current.splatMesh.disposeSplatTree();
+      }
+      const sceneCount = viewerInstanceRef.current.getSceneCount();
+      if (sceneCount > 0) {
+        const scenesToRemove = Array.from({ length: sceneCount }, (_, i) => i);
+        await viewerInstanceRef.current.removeSplatScenes(
+          scenesToRemove,
+          false
+        );
+      }
+
+      cellData.loaded = false;
+      cellData.loading = false;
+      updateCellVisualState(cellData, "distant");
+    } catch (error) {
+      console.error(`Error unloading cell ${cellKey}:`, error);
+    }
+  };
+
+  // Visual State Management
+  const updateCellVisualState = (cellData, state) => {
+    switch (state) {
+      case "distant":
+        cellData.sphere.material.color.setHex(CONSTANTS.COLORS.BLUE);
+        cellData.sphere.visible = true;
+        break;
+      case "loading":
+        cellData.sphere.material.color.setHex(CONSTANTS.COLORS.ORANGE);
+        cellData.sphere.visible = true;
+        break;
+      case "loaded":
+        cellData.sphere.visible = false;
+        break;
+    }
+  };
+
+  // Scene Loading Queue Management
+  const processLoadQueue = async () => {
+    if (pendingLoads.current.size === 0) return;
+    if (viewerInstanceRef.current.isLoadingOrUnloading()) return;
+
+    const [nextCellKey] = pendingLoads.current;
+    const cellData = loadedCells.current.get(nextCellKey);
+    pendingLoads.current.delete(nextCellKey);
+
+    if (!cellData || cellData.loaded || cellData.loading) return;
+
+    try {
+      cellData.loading = true;
+      updateCellVisualState(cellData, "loading");
+
+      await viewerInstanceRef.current.addSplatScene(cellData.filePath, {
+        splatAlphaRemovalThreshold: 20,
+        position: [0, 0, 0],
+        rotation: [0, 0, 0, 1],
+        scale: [1, 1, 1],
+        showLoadingUI: false,
+      });
+
+      cellData.loaded = true;
+      cellData.loading = false;
+      cellData.lastUsed = Date.now();
+      updateCellVisualState(cellData, "loaded");
+    } catch (error) {
+      console.error(`Error loading cell ${nextCellKey}:`, error);
+      cellData.loading = false;
+      updateCellVisualState(cellData, "distant");
+    }
+  };
+
+  // Distance and Priority Calculations
+  const updateCellVisibility = () => {
+    if (!viewerInstanceRef.current?.camera) return;
+
+    const camera = viewerInstanceRef.current.camera;
+    const currentTime = Date.now();
+
+    // Calculate and sort cells by distance
+    const cellDistances = Array.from(loadedCells.current.entries())
+      .map(([key, cell]) => ({
+        key,
+        cell,
+        distance: camera.position.distanceTo(cell.center),
+      }))
+      .sort((a, b) => a.distance - b.distance);
+
+    // Determine closest cells within threshold
+    const closeCells = cellDistances.filter(
+      ({ distance }) => distance <= CONSTANTS.CELL_VISIBILITY_THRESHOLD
+    );
+    const closestCells = closeCells.slice(0, CONSTANTS.MAX_LOADED_CELLS);
+    const closestCellKeys = new Set(closestCells.map((c) => c.key));
+
+    // Update all cells' visual states
+    for (const [_, cell] of loadedCells.current) {
+      updateCellVisualState(cell, "distant");
+    }
+
+    // Process scene updates if enough time has passed
+    if (
+      currentTime - lastSceneUpdate.current >=
+      CONSTANTS.SCENE_UPDATE_INTERVAL
+    ) {
+      lastSceneUpdate.current = currentTime;
+
+      // Unload cells that are no longer needed
+      for (const [key, cell] of loadedCells.current) {
+        if (cell.loaded && !closestCellKeys.has(key)) {
+          unloadCell(key);
+        }
+      }
+
+      // Queue new loads for closest cells
+      pendingLoads.current.clear();
+      for (const { key, cell } of closestCells) {
+        if (!cell.loaded && !cell.loading) {
+          pendingLoads.current.add(key);
+        }
+      }
+
+      processLoadQueue();
+    }
+
+    // Update visual states for closest cells
+    for (const { cell } of closestCells) {
+      if (cell.loaded) {
+        updateCellVisualState(cell, "loaded");
+      } else if (cell.loading || pendingLoads.current.has(cell.key)) {
+        updateCellVisualState(cell, "loading");
+      }
+    }
+  };
+
+  // Setup and Cleanup
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -25,9 +184,7 @@ export default function Viewer3D({ modelId, onProgress }) {
   useEffect(() => {
     if (!isMounted || !viewerRef.current) return;
 
-    const currentViewerRef = viewerRef.current;
     const scene = new THREE.Scene();
-
     const viewer = new GaussianSplats3D.Viewer({
       cameraUp: [0, 1, 0],
       initialCameraPosition: [0, 0, 5],
@@ -40,14 +197,13 @@ export default function Viewer3D({ modelId, onProgress }) {
       threeScene: scene,
       useWorkers: true,
       cleanupOnDestroy: true,
-      progressCallback: (percent, message) => {
-        onProgress(percent, message);
-      },
+      progressCallback: onProgress,
     });
 
     viewerInstanceRef.current = viewer;
 
-    const loadScenes = async () => {
+    // Initialize cells from model data
+    const initializeCells = async () => {
       try {
         const response = await fetch(`/${modelId}.json`);
         const modelData = await response.json();
@@ -57,7 +213,6 @@ export default function Viewer3D({ modelId, onProgress }) {
           const gridStep = patch.grid_step;
           const averageZ = patch.average_z;
 
-          // Create spheres for all cells initially
           for (const [cellX, cellY] of patch.cells) {
             const sphereGeometry = new THREE.SphereGeometry(
               gridStep / 6,
@@ -65,7 +220,7 @@ export default function Viewer3D({ modelId, onProgress }) {
               32
             );
             const sphereMaterial = new THREE.MeshBasicMaterial({
-              color: 0x0000ff,
+              color: CONSTANTS.COLORS.BLUE,
             });
             const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
 
@@ -76,7 +231,6 @@ export default function Viewer3D({ modelId, onProgress }) {
             );
             sphere.position.copy(cellCenter);
 
-            // Store cell information
             loadedCells.current.set(`${cellX},${cellY}`, {
               sphere,
               center: cellCenter,
@@ -90,163 +244,15 @@ export default function Viewer3D({ modelId, onProgress }) {
           }
         }
 
-        if (viewerInstanceRef.current) {
-          viewerInstanceRef.current.start();
-        }
+        viewer.start();
       } catch (error) {
-        console.error("Error loading scene files:", error);
+        console.error("Error initializing cells:", error);
       }
     };
 
-    loadScenes();
+    initializeCells();
 
-    return () => {
-      const viewer = viewerInstanceRef.current;
-      if (viewer) {
-        if (viewer.renderLoop) {
-          viewer.renderLoop.stop();
-        }
-        if (viewer.splatMesh) {
-          viewer.splatMesh.disposeSplatTree();
-          viewer.splatMesh.scene.remove(viewer.splatMesh);
-        }
-        if (viewer.renderer) {
-          viewer.renderer.dispose();
-        }
-        if (currentViewerRef && currentViewerRef.firstChild) {
-          currentViewerRef.removeChild(currentViewerRef.firstChild);
-        }
-        viewerInstanceRef.current = null;
-      }
-
-      scene.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          object.geometry.dispose();
-          object.material.dispose();
-        }
-      });
-
-      loadedCells.current.clear();
-      cellLoadQueue.current.clear();
-    };
-  }, [isMounted, modelId, onProgress]);
-
-  const processLoadQueue = async () => {
-    if (pendingLoads.current.size === 0) return;
-    if (viewerInstanceRef.current.isLoadingOrUnloading()) return;
-
-    // Take the first pending cell
-    const [nextCellKey] = pendingLoads.current;
-    const cellData = loadedCells.current.get(nextCellKey);
-    pendingLoads.current.delete(nextCellKey);
-
-    if (!cellData || cellData.loaded || cellData.loading) return;
-
-    try {
-      cellData.loading = true;
-      await viewerInstanceRef.current.addSplatScene(cellData.filePath, {
-        splatAlphaRemovalThreshold: 20,
-        position: [0, 0, 0],
-        rotation: [0, 0, 0, 1],
-        scale: [1, 1, 1],
-        showLoadingUI: false,
-      });
-      cellData.loaded = true;
-      cellData.loading = false;
-      cellData.lastUsed = Date.now();
-      cellData.sphere.visible = false;
-    } catch (error) {
-      console.error(`Error loading cell ${nextCellKey}:`, error);
-      cellData.loading = false;
-      cellData.sphere.material.color.setHex(0x0000ff); // Reset to blue if error
-      pendingLoads.current.delete(nextCellKey);
-    }
-  };
-
-  const unloadCell = async (cellKey) => {
-    const cellData = loadedCells.current.get(cellKey);
-    if (!cellData || !cellData.loaded) return;
-
-    try {
-      if (viewerInstanceRef.current.isLoadingOrUnloading()) return;
-
-      // Force remove all scenes
-      const sceneCount = viewerInstanceRef.current.getSceneCount();
-      if (sceneCount > 0) {
-        // Force cleanup before removal
-        if (viewerInstanceRef.current.splatMesh) {
-          viewerInstanceRef.current.splatMesh.disposeSplatTree();
-        }
-        const scenesToRemove = Array.from({ length: sceneCount }, (_, i) => i);
-        await viewerInstanceRef.current.removeSplatScenes(
-          scenesToRemove,
-          false
-        );
-      }
-
-      cellData.loaded = false;
-      cellData.loading = false;
-      cellData.sphere.material.color.setHex(0x0000ff); // Blue
-      cellData.sphere.visible = true;
-    } catch (error) {
-      console.error(`Error unloading cell ${cellKey}:`, error);
-    }
-  };
-
-  const updateCellVisibility = () => {
-    if (!viewerInstanceRef.current || !viewerInstanceRef.current.camera) return;
-
-    const currentTime = Date.now();
-    if (currentTime - lastPositionCheck.current < POSITION_CHECK_INTERVAL) {
-      return;
-    }
-    lastPositionCheck.current = currentTime;
-
-    const camera = viewerInstanceRef.current.camera;
-
-    // Calculate distances for all cells
-    const cellDistances = Array.from(loadedCells.current.entries()).map(
-      ([key, cell]) => ({
-        key,
-        cell,
-        distance: camera.position.distanceTo(cell.center),
-      })
-    );
-
-    // Sort by distance
-    cellDistances.sort((a, b) => a.distance - b.distance);
-
-    // Get the closest cells within threshold
-    const closeCells = cellDistances.filter(
-      ({ distance }) => distance <= CELL_VISIBILITY_THRESHOLD
-    );
-    const closestCells = closeCells.slice(0, MAX_LOADED_CELLS);
-    const closestCellKeys = new Set(closestCells.map((c) => c.key));
-
-    // First, unload any cells that shouldn't be visible
-    for (const [key, cell] of loadedCells.current) {
-      if (cell.loaded && !closestCellKeys.has(key)) {
-        unloadCell(key);
-      }
-    }
-
-    // Reset pending loads
-    pendingLoads.current.clear();
-
-    // Update closest cells
-    for (const { key, cell } of closestCells) {
-      if (!cell.loaded && !cell.loading) {
-        pendingLoads.current.add(key);
-        cell.sphere.material.color.setHex(0xffa500); // Orange for pending load
-      }
-      cell.sphere.visible = !cell.loaded;
-    }
-
-    // Process any pending loads
-    processLoadQueue();
-  };
-
-  useEffect(() => {
+    // Animation loop
     const animate = () => {
       requestAnimationFrame(animate);
       updateCellVisibility();
@@ -254,10 +260,22 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     const animationId = requestAnimationFrame(animate);
 
+    // Cleanup
     return () => {
       cancelAnimationFrame(animationId);
+      if (viewerInstanceRef.current) {
+        viewerInstanceRef.current.dispose();
+      }
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          object.material.dispose();
+        }
+      });
+      loadedCells.current.clear();
+      pendingLoads.current.clear();
     };
-  }, []);
+  }, [isMounted, modelId, onProgress]);
 
   if (!isMounted) return null;
 
