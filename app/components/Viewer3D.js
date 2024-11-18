@@ -14,24 +14,24 @@ const CONSTANTS = {
 };
 
 export default function Viewer3D({ modelId, onProgress }) {
-  const viewerRef = useRef(null);
-  const viewerInstanceRef = useRef(null);
+  const viewerRoot = useRef(null);
+  const viewer = useRef(null);
   const loadedCells = useRef(new Map());
   const lastUpdate = useRef(0);
   const [isMounted, setIsMounted] = useState(false);
 
   // Load all cells at once
   const loadCells = async (cellsToLoad) => {
-    if (viewerInstanceRef.current.isLoadingOrUnloading()) return;
+    if (viewer.current.isLoadingOrUnloading()) return;
 
     // First unload everything
-    const sceneCount = viewerInstanceRef.current.getSceneCount();
+    const sceneCount = viewer.current.getSceneCount();
     if (sceneCount > 0) {
-      if (viewerInstanceRef.current.splatMesh) {
-        viewerInstanceRef.current.splatMesh.disposeSplatTree();
+      if (viewer.current.splatMesh) {
+        viewer.current.splatMesh.disposeSplatTree();
       }
       const scenesToRemove = Array.from({ length: sceneCount }, (_, i) => i);
-      await viewerInstanceRef.current.removeSplatScenes(scenesToRemove, false);
+      await viewer.current.removeSplatScenes(scenesToRemove, false);
 
       // Reset all cells to unloaded state
       for (const [_, cell] of loadedCells.current) {
@@ -51,7 +51,9 @@ export default function Viewer3D({ modelId, onProgress }) {
     try {
       // Load all new cells at once
       for (const { cell } of cellsToLoad) {
-        await viewerInstanceRef.current.addSplatScene(cell.filePath, {
+        // what's happening here, we download the splat file and then add it to the scene
+        // can we separate these two operations?
+        await viewer.current.addSplatScene(cell.filePath, {
           splatAlphaRemovalThreshold: 20,
           position: [0, 0, 0],
           rotation: [0, 0, 0, 1],
@@ -79,20 +81,17 @@ export default function Viewer3D({ modelId, onProgress }) {
     if (!cellData || !cellData.loaded) return;
 
     try {
-      if (viewerInstanceRef.current.isLoadingOrUnloading()) return;
+      if (viewer.current.isLoadingOrUnloading()) return;
 
       // Force cleanup of all scenes
-      const sceneCount = viewerInstanceRef.current.getSceneCount();
+      const sceneCount = viewer.current.getSceneCount();
       if (sceneCount > 0) {
         // Force cleanup before removal
-        if (viewerInstanceRef.current.splatMesh) {
-          viewerInstanceRef.current.splatMesh.disposeSplatTree();
+        if (viewer.current.splatMesh) {
+          viewer.current.splatMesh.disposeSplatTree();
         }
         const scenesToRemove = Array.from({ length: sceneCount }, (_, i) => i);
-        await viewerInstanceRef.current.removeSplatScenes(
-          scenesToRemove,
-          false
-        );
+        await viewer.current.removeSplatScenes(scenesToRemove, false);
       }
 
       // Reset all cells to unloaded state
@@ -108,9 +107,9 @@ export default function Viewer3D({ modelId, onProgress }) {
   };
 
   const updateCellVisibility = () => {
-    if (!viewerInstanceRef.current?.camera) return;
+    if (!viewer.current?.camera) return;
 
-    const camera = viewerInstanceRef.current.camera;
+    const camera = viewer.current.camera;
 
     // Get all cells sorted by distance
     const cellDistances = Array.from(loadedCells.current.entries())
@@ -170,14 +169,14 @@ export default function Viewer3D({ modelId, onProgress }) {
   }, []);
 
   useEffect(() => {
-    if (!isMounted || !viewerRef.current) return;
+    if (!isMounted || !viewerRoot.current) return;
 
     const scene = new THREE.Scene();
-    const viewer = new GaussianSplats3D.Viewer({
+    viewer.current = new GaussianSplats3D.Viewer({
       cameraUp: [0, 1, 0],
       initialCameraPosition: [0, 0, 5],
       initialCameraLookAt: [0, 0, 0],
-      rootElement: viewerRef.current,
+      rootElement: viewerRoot.current,
       selfDrivenMode: true,
       sharedMemoryForWorkers: false,
       dynamicScene: true,
@@ -187,8 +186,6 @@ export default function Viewer3D({ modelId, onProgress }) {
       cleanupOnDestroy: true,
       progressCallback: onProgress,
     });
-
-    viewerInstanceRef.current = viewer;
 
     // Initialize cells
     const initializeCells = async () => {
@@ -224,7 +221,7 @@ export default function Viewer3D({ modelId, onProgress }) {
               center: cellCenter,
               loaded: false,
               loading: false,
-              filePath: `grid-${gridStep}/${baseFileName}_${gridStep}s_${cellX}x_${cellY}y.ply`,
+              filePath: `grid-${gridStep}-ksplat/${baseFileName}_${gridStep}s_${cellX}x_${cellY}y.ksplat`,
               lastUsed: Date.now(),
             });
 
@@ -232,7 +229,7 @@ export default function Viewer3D({ modelId, onProgress }) {
           }
         }
 
-        viewer.start();
+        viewer.current.start();
       } catch (error) {
         console.error("Error initializing cells:", error);
       }
@@ -249,8 +246,8 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     return () => {
       cancelAnimationFrame(animationId);
-      if (viewerInstanceRef.current) {
-        viewerInstanceRef.current.dispose();
+      if (viewer.current) {
+        viewer.current.dispose();
       }
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh) {
@@ -264,5 +261,5 @@ export default function Viewer3D({ modelId, onProgress }) {
 
   if (!isMounted) return null;
 
-  return <div ref={viewerRef} style={{ width: "100%", height: "100vh" }} />;
+  return <div ref={viewerRoot} style={{ width: "100%", height: "100vh" }} />;
 }
