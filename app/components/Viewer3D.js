@@ -7,220 +7,196 @@
 import { useEffect, useRef, useState } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
+import { LRUCache } from "../utils/LRUCache";
 
 // Constants
 const CONSTANTS = {
   CELL_VISIBILITY_THRESHOLD: 10,
-  MAX_LOADED_CELLS: 15,
-  SCENE_UPDATE_INTERVAL: 1000,
+  MAX_LOADED_CELLS: 10,
+  CACHE_SIZE: 20,
+  SCENE_UPDATE_INTERVAL: 5000,
+  CELL_UPDATE_INTERVAL: 50,
   COLORS: {
     BLUE: 0x0000ff,
     ORANGE: 0xffa500,
     GREEN: 0x00ff00,
   },
-  SPLAT_BUFFERS_CACHE: new Map(), // Cache for loaded splat buffers
 };
 
 export default function Viewer3D({ modelId, onProgress }) {
   const viewerRoot = useRef(null);
   const viewer = useRef(null);
   const loadedCells = useRef(new Map());
+  const bufferCache = useRef(new LRUCache(CONSTANTS.CACHE_SIZE));
   const lastUpdate = useRef(0);
+  const pendingVisualizationUpdate = useRef(null);
+  const lastVisualizationUpdate = useRef(0);
+  const lastCellUpdate = useRef(0);
   const [isMounted, setIsMounted] = useState(false);
 
-  // Load all cells at once
-  const loadCells = async (cellsToLoad) => {
-    if (viewer.current.isLoadingOrUnloading()) return;
-
+  // Separate loading from visualization
+  const loadBuffer = async (filePath) => {
     try {
-      // First unload everything
-      const sceneCount = viewer.current.getSceneCount();
-      if (sceneCount > 0) {
-        if (viewer.current.splatMesh) {
-          viewer.current.splatMesh.disposeSplatTree();
-        }
-        const scenesToRemove = Array.from({ length: sceneCount }, (_, i) => i);
-        await viewer.current.removeSplatScenes(scenesToRemove, false);
-      }
-
-      // Mark cells we're about to load
-      for (const { cell } of cellsToLoad) {
-        cell.loading = true;
-        cell.sphere.material.color.setHex(CONSTANTS.COLORS.ORANGE);
-      }
-
-      // First, load all files into memory
-      const loadPromises = cellsToLoad.map(async ({ cell }) => {
-        if (!CONSTANTS.SPLAT_BUFFERS_CACHE.has(cell.filePath)) {
-          const buffer = await viewer.current.downloadSplatSceneToSplatBuffer(
-            cell.filePath,
-            20, // splatAlphaRemovalThreshold
-            undefined, // onProgress
-            false, // progressiveBuild
-            undefined, // onSectionBuilt
-            GaussianSplats3D.SceneFormat.KSplat
-          );
-          CONSTANTS.SPLAT_BUFFERS_CACHE.set(cell.filePath, buffer);
-        }
-        return {
-          cell,
-          buffer: CONSTANTS.SPLAT_BUFFERS_CACHE.get(cell.filePath),
-        };
-      });
-
-      const loadedBuffers = await Promise.all(loadPromises);
-
-      // Then add all buffers to the scene at once
-      const splatBuffers = loadedBuffers.map(({ buffer }) => buffer);
-      const splatBufferOptions = loadedBuffers.map(({ cell }) => ({
-        position: [0, 0, 0],
-        rotation: [0, 0, 0, 1],
-        scale: [1, 1, 1],
-        splatAlphaRemovalThreshold: 20,
-      }));
-
-      await viewer.current.addSplatBuffers(
-        splatBuffers,
-        splatBufferOptions,
-        true, // finalBuild
-        false, // showLoadingUI
-        true, // showLoadingUIForSplatTreeBuild
-        true, // replaceExisting
-        true // enableRenderBeforeFirstSort
+      const buffer = await viewer.current.downloadSplatSceneToSplatBuffer(
+        filePath,
+        20,
+        undefined,
+        false,
+        undefined,
+        GaussianSplats3D.SceneFormat.KSplat
       );
-
-      // Update cell states
-      for (const { cell } of cellsToLoad) {
-        cell.loaded = true;
-        cell.loading = false;
-        cell.sphere.visible = false;
-      }
+      return buffer;
     } catch (error) {
-      console.error("Error loading cells:", error);
-      // Reset states on error
-      for (const { cell } of cellsToLoad) {
-        cell.loading = false;
-        cell.loaded = false;
-        cell.sphere.material.color.setHex(CONSTANTS.COLORS.BLUE);
-        cell.sphere.visible = true;
-      }
+      console.error("Error loading buffer:", error);
+      return null;
     }
   };
 
-  const unloadCell = async (cellKey) => {
-    const cellData = loadedCells.current.get(cellKey);
-    if (!cellData || !cellData.loaded) return;
-
-    try {
-      if (viewer.current.isLoadingOrUnloading()) return;
-
-      // Force cleanup of all scenes
-      const sceneCount = viewer.current.getSceneCount();
-      if (sceneCount > 0) {
-        // Force cleanup before removal
-        if (viewer.current.splatMesh) {
-          viewer.current.splatMesh.disposeSplatTree();
-        }
-        const scenesToRemove = Array.from({ length: sceneCount }, (_, i) => i);
-        await viewer.current.removeSplatScenes(scenesToRemove, false);
-      }
-
-      // Reset all cells to unloaded state
-      for (const [_, cell] of loadedCells.current) {
-        cell.loaded = false;
-        cell.loading = false;
-        cell.sphere.material.color.setHex(CONSTANTS.COLORS.BLUE);
-        cell.sphere.visible = true;
-      }
-    } catch (error) {
-      console.error(`Error unloading cell ${cellKey}:`, error);
-    }
-  };
-
-  const updateCellVisibility = () => {
+  const updateCellIndicators = () => {
     if (!viewer.current?.camera) return;
 
     const camera = viewer.current.camera;
     const frustum = new THREE.Frustum();
     const projScreenMatrix = new THREE.Matrix4();
-
-    // Calculate the frustum
     projScreenMatrix.multiplyMatrices(
       camera.projectionMatrix,
       camera.matrixWorldInverse
     );
     frustum.setFromProjectionMatrix(projScreenMatrix);
 
-    // Get all cells sorted by distance
-    const cellDistances = Array.from(loadedCells.current.entries())
+    // Get visible cells sorted by distance
+    const visibleCells = Array.from(loadedCells.current.entries())
       .map(([key, cell]) => ({
         key,
         cell,
         distance: camera.position.distanceTo(cell.center),
         inFrustum: frustum.containsPoint(cell.center),
       }))
-      .sort((a, b) => a.distance - b.distance);
-
-    // Get closest cells within threshold
-    const closestCells = cellDistances
       .filter(
         ({ distance, inFrustum }) =>
           distance <= CONSTANTS.CELL_VISIBILITY_THRESHOLD && inFrustum
       )
+      .sort((a, b) => a.distance - b.distance)
       .slice(0, CONSTANTS.MAX_LOADED_CELLS);
 
-    const closestCellKeys = new Set(closestCells.map((c) => c.key));
+    const visibleFilePaths = new Set(
+      visibleCells.map(({ cell }) => cell.filePath)
+    );
 
-    const currentTime = Date.now();
-    if (currentTime - lastUpdate.current >= CONSTANTS.SCENE_UPDATE_INTERVAL) {
-      lastUpdate.current = currentTime;
-
-      // First, unload cells that are too far away or out of frustum
-      const cellsToUnload = Array.from(loadedCells.current.entries())
-        .filter(([key, cell]) => {
-          if (!cell.loaded) return false;
-          const cellData = cellDistances.find((c) => c.key === key);
-          return (
-            !closestCellKeys.has(key) ||
-            cellData.distance > CONSTANTS.CELL_VISIBILITY_THRESHOLD ||
-            !cellData.inFrustum
-          );
-        })
-        .map(([key]) => key);
-
-      if (cellsToUnload.length > 0) {
-        for (const key of cellsToUnload) {
-          unloadCell(key);
-        }
-      }
-
-      // Then, load new cells if needed
-      const cellsToLoad = closestCells.filter(
-        ({ cell }) => !cell.loaded && !cell.loading
-      );
-      if (cellsToLoad.length > 0) {
-        loadCells(cellsToLoad);
-      }
-    }
-
-    // Update sphere visibility and colors
+    // Update sphere colors immediately
     for (const [key, cell] of loadedCells.current) {
-      const cellData = cellDistances.find((c) => c.key === key);
-      const isClosest = closestCellKeys.has(key);
-
+      const isVisible = visibleFilePaths.has(cell.filePath);
       if (cell.loaded) {
-        cell.sphere.visible = !isClosest;
-      } else {
+        cell.sphere.visible = false;
+      } else if (cell.loading) {
+        cell.sphere.material.color.setHex(CONSTANTS.COLORS.ORANGE);
         cell.sphere.visible = true;
-        if (isClosest && !cell.loading) {
-          cell.sphere.material.color.setHex(CONSTANTS.COLORS.ORANGE);
-        } else {
-          cell.sphere.material.color.setHex(
-            cellData.inFrustum ? CONSTANTS.COLORS.GREEN : CONSTANTS.COLORS.BLUE
-          );
-        }
+      } else {
+        cell.sphere.material.color.setHex(
+          isVisible ? CONSTANTS.COLORS.GREEN : CONSTANTS.COLORS.BLUE
+        );
+        cell.sphere.visible = true;
       }
     }
+
+    // Check if we should do a full update
+    const currentTime = Date.now();
+    if (
+      currentTime - lastVisualizationUpdate.current >=
+      CONSTANTS.SCENE_UPDATE_INTERVAL
+    ) {
+      lastVisualizationUpdate.current = currentTime;
+      updateVisibleCells(visibleFilePaths);
+    }
+  };
+
+  const updateVisibleCells = async (visibleFilePaths) => {
+    // Load necessary buffers into cache
+    const loadPromises = Array.from(visibleFilePaths)
+      .filter((filePath) => !bufferCache.current.has(filePath))
+      .map(async (filePath) => {
+        const cell = Array.from(loadedCells.current.values()).find(
+          (cell) => cell.filePath === filePath
+        );
+        if (!cell) return null;
+
+        cell.loading = true;
+        cell.sphere.material.color.setHex(CONSTANTS.COLORS.ORANGE);
+        const buffer = await loadBuffer(filePath);
+        if (buffer) {
+          bufferCache.current.set(filePath, buffer);
+        }
+        cell.loading = false;
+        // Return to green if still needed
+        if (visibleFilePaths.has(filePath)) {
+          cell.sphere.material.color.setHex(CONSTANTS.COLORS.GREEN);
+        }
+        return buffer;
+      });
+
+    await Promise.all(loadPromises);
+
+    // Schedule visualization update
+    scheduleVisualizationUpdate(visibleFilePaths);
+  };
+
+  const scheduleVisualizationUpdate = (visibleFilePaths) => {
+    if (pendingVisualizationUpdate.current) {
+      clearTimeout(pendingVisualizationUpdate.current);
+    }
+
+    pendingVisualizationUpdate.current = setTimeout(async () => {
+      if (!viewer.current || viewer.current.isLoadingOrUnloading()) return;
+
+      try {
+        // Clear existing scenes
+        const sceneCount = viewer.current.getSceneCount();
+        if (sceneCount > 0) {
+          if (viewer.current.splatMesh) {
+            viewer.current.splatMesh.disposeSplatTree();
+          }
+          const scenesToRemove = Array.from(
+            { length: sceneCount },
+            (_, i) => i
+          );
+          await viewer.current.removeSplatScenes(scenesToRemove, false);
+        }
+
+        // Get buffers for visible cells
+        const visibleBuffers = Array.from(visibleFilePaths)
+          .map((path) => bufferCache.current.get(path))
+          .filter(Boolean);
+
+        if (visibleBuffers.length > 0) {
+          // Add all visible buffers in one batch
+          await viewer.current.addSplatBuffers(
+            visibleBuffers,
+            visibleBuffers.map(() => ({
+              position: [0, 0, 0],
+              rotation: [0, 0, 0, 1],
+              scale: [1, 1, 1],
+              splatAlphaRemovalThreshold: 20,
+            })),
+            true,
+            false,
+            true,
+            true,
+            true
+          );
+        }
+
+        // Update cell states and hide spheres for visualized cells
+        for (const [_, cell] of loadedCells.current) {
+          const isVisible = visibleFilePaths.has(cell.filePath);
+          cell.loaded = isVisible;
+          if (isVisible) {
+            cell.sphere.visible = false;
+          }
+        }
+      } catch (error) {
+        console.error("Error updating visualization:", error);
+      }
+    }, 100);
   };
 
   // Setup and Cleanup
@@ -301,13 +277,25 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     const animate = () => {
       requestAnimationFrame(animate);
-      updateCellVisibility();
+      const currentTime = Date.now();
+
+      // Update cell indicators frequently
+      if (
+        currentTime - lastCellUpdate.current >=
+        CONSTANTS.CELL_UPDATE_INTERVAL
+      ) {
+        lastCellUpdate.current = currentTime;
+        updateCellIndicators();
+      }
     };
 
     const animationId = requestAnimationFrame(animate);
 
     return () => {
       cancelAnimationFrame(animationId);
+      if (pendingVisualizationUpdate.current) {
+        clearTimeout(pendingVisualizationUpdate.current);
+      }
       if (viewer.current) {
         viewer.current.dispose();
       }
@@ -317,7 +305,7 @@ export default function Viewer3D({ modelId, onProgress }) {
           object.material.dispose();
         }
       });
-      CONSTANTS.SPLAT_BUFFERS_CACHE.clear();
+      bufferCache.current.clear();
       loadedCells.current.clear();
     };
   }, [isMounted, modelId, onProgress]);
