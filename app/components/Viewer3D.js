@@ -1,3 +1,9 @@
+// We visualising massive 3D Gaussian Splat models of coral reefs.
+// We split the model into smaller cells, say 1x1 meter and show them in a 3D viewer.
+// We want to load only the cells that are close to the camera and unload cells that are far away.
+// We also want to load cells in batches to avoid memory issues.
+// Effectively, we want to implement a LOD system for our 3D viewer.
+
 import { useEffect, useRef, useState } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
@@ -6,7 +12,7 @@ import * as THREE from "three";
 const CONSTANTS = {
   CELL_VISIBILITY_THRESHOLD: 10,
   MAX_LOADED_CELLS: 15,
-  SCENE_UPDATE_INTERVAL: 333,
+  SCENE_UPDATE_INTERVAL: 1000,
   COLORS: {
     BLUE: 0x0000ff,
     ORANGE: 0xffa500,
@@ -157,7 +163,10 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     // Get closest cells within threshold
     const closestCells = cellDistances
-      .filter(({ distance }) => distance <= CONSTANTS.CELL_VISIBILITY_THRESHOLD)
+      .filter(
+        ({ distance, inFrustum }) =>
+          distance <= CONSTANTS.CELL_VISIBILITY_THRESHOLD && inFrustum
+      )
       .slice(0, CONSTANTS.MAX_LOADED_CELLS);
 
     const closestCellKeys = new Set(closestCells.map((c) => c.key));
@@ -166,12 +175,24 @@ export default function Viewer3D({ modelId, onProgress }) {
     if (currentTime - lastUpdate.current >= CONSTANTS.SCENE_UPDATE_INTERVAL) {
       lastUpdate.current = currentTime;
 
-      // First, unload cells that are no longer needed
-      // for (const [key, cell] of loadedCells.current) {
-      //   if (cell.loaded && !closestCellKeys.has(key)) {
-      //     unloadCell(key);
-      //   }
-      // }
+      // First, unload cells that are too far away or out of frustum
+      const cellsToUnload = Array.from(loadedCells.current.entries())
+        .filter(([key, cell]) => {
+          if (!cell.loaded) return false;
+          const cellData = cellDistances.find((c) => c.key === key);
+          return (
+            !closestCellKeys.has(key) ||
+            cellData.distance > CONSTANTS.CELL_VISIBILITY_THRESHOLD ||
+            !cellData.inFrustum
+          );
+        })
+        .map(([key]) => key);
+
+      if (cellsToUnload.length > 0) {
+        for (const key of cellsToUnload) {
+          unloadCell(key);
+        }
+      }
 
       // Then, load new cells if needed
       const cellsToLoad = closestCells.filter(
@@ -194,7 +215,6 @@ export default function Viewer3D({ modelId, onProgress }) {
         if (isClosest && !cell.loading) {
           cell.sphere.material.color.setHex(CONSTANTS.COLORS.ORANGE);
         } else {
-          // Set color based on frustum culling
           cell.sphere.material.color.setHex(
             cellData.inFrustum ? CONSTANTS.COLORS.GREEN : CONSTANTS.COLORS.BLUE
           );
