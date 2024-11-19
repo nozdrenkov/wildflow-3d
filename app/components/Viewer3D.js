@@ -12,8 +12,8 @@ import { LRUCache } from "../utils/LRUCache";
 // Constants
 const CONSTANTS = {
   CELL_VISIBILITY_THRESHOLD: 10,
-  MAX_LOADED_CELLS: 10,
-  CACHE_SIZE: 20,
+  MAX_LOADED_CELLS: 30,
+  CACHE_SIZE: 40,
   SCENE_UPDATE_INTERVAL: 5000,
   CELL_UPDATE_INTERVAL: 50,
   COLORS: {
@@ -23,7 +23,11 @@ const CONSTANTS = {
   },
 };
 
-export default function Viewer3D({ modelId, onProgress }) {
+export default function Viewer3D({
+  modelId,
+  setDownloadProgress,
+  setVisualProgress,
+}) {
   const viewerRoot = useRef(null);
   const viewer = useRef(null);
   const loadedCells = useRef(new Map());
@@ -50,6 +54,35 @@ export default function Viewer3D({ modelId, onProgress }) {
       console.error("Error loading buffer:", error);
       return null;
     }
+  };
+
+  const calculateProgress = (visibleFilePaths) => {
+    if (!visibleFilePaths?.size) return { download: 10, visual: 0 };
+
+    const totalVisible = visibleFilePaths.size;
+    const downloadedCount = Array.from(visibleFilePaths).filter((path) =>
+      bufferCache.current.has(path)
+    ).length;
+
+    const visualizedCount = Array.from(visibleFilePaths).filter((path) => {
+      const cell = Array.from(loadedCells.current.values()).find(
+        (cell) => cell.filePath === path
+      );
+      return cell?.loaded;
+    }).length;
+
+    // If we're loading anything, minimum download progress is 10%
+    const downloadProgress =
+      totalVisible > downloadedCount
+        ? 10
+        : Math.min(100, Math.round((downloadedCount / totalVisible) * 100));
+
+    const visualProgress = Math.min(
+      100,
+      Math.round((visualizedCount / totalVisible) * 100)
+    );
+
+    return { download: downloadProgress, visual: visualProgress };
   };
 
   const updateCellIndicators = () => {
@@ -82,6 +115,11 @@ export default function Viewer3D({ modelId, onProgress }) {
     const visibleFilePaths = new Set(
       visibleCells.map(({ cell }) => cell.filePath)
     );
+
+    // Update both progress indicators
+    const progress = calculateProgress(visibleFilePaths);
+    setDownloadProgress(progress.download);
+    setVisualProgress(progress.visual);
 
     // Update sphere colors immediately
     for (const [key, cell] of loadedCells.current) {
@@ -221,7 +259,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       threeScene: scene,
       useWorkers: true,
       cleanupOnDestroy: true,
-      progressCallback: onProgress,
+      progressCallback: undefined,
       format: GaussianSplats3D.SceneFormat.KSplat,
     });
 
@@ -308,7 +346,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       bufferCache.current.clear();
       loadedCells.current.clear();
     };
-  }, [isMounted, modelId, onProgress]);
+  }, [isMounted, modelId]);
 
   if (!isMounted) return null;
 

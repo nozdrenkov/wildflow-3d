@@ -9,39 +9,55 @@ interface Viewer3DWrapperProps {
 }
 
 export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
-  const [progress, setProgress] = useState({ percent: 0, message: "Initializing..." });
-  const [isLoading, setIsLoading] = useState(true);
-
-  const handleProgress = useCallback((percent: number, message: string) => {
-    setProgress({ percent, message });
-    if (percent >= 100) {
-      setIsLoading(false);
-    }
-  }, []);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [visualProgress, setVisualProgress] = useState(0);
 
   useEffect(() => {
-    // Show progress bar immediately
-    handleProgress(0, "Initializing...");
-  }, [handleProgress]);
+    document.title =
+      visualProgress < 100 ? `Loading ${visualProgress}%` : "Viewer";
+  }, [visualProgress]);
 
   return (
     <div className="relative w-full h-screen">
-      {isLoading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-transparent z-50 pointer-events-none">
-          <div className="flex flex-row items-center justify-center">
-            <div className="w-64">
-              <ProgressBar percent={progress.percent} />
-            </div>
-            <div className="text-blue-100 text w-16 ml-2">
-              {progress.percent.toFixed(0)}%
-            </div>
-          </div>
-          <div className="text-blue-100 text-xs pr-16">
-            {progress.message}
-          </div>
+      {visualProgress < 100 && (
+        <div className="absolute top-0 left-0 w-full z-50">
+          {/* Amber download progress */}
+          <div
+            className="absolute top-0 left-0 bg-amber-500 grow-only-transition"
+            style={{
+              width: `${downloadProgress}%`,
+              height: "5px",
+            }}
+          />
+          {/* Green visualization progress */}
+          <div
+            className="absolute top-0 left-0 bg-green-500 grow-only-transition"
+            style={{
+              width: `${visualProgress}%`,
+              height: "5px",
+            }}
+          />
         </div>
       )}
-      <Viewer3D modelId={modelId} onProgress={handleProgress} />
+
+      <style jsx>{`
+        .grow-only-transition {
+          transition: width 300ms ease-out;
+          transition-property: width;
+          transition-duration: 300ms;
+          transition-timing-function: ease-out;
+          transition-delay: 0s;
+        }
+        .grow-only-transition:not([style*="width: 0"]) {
+          transition: none;
+        }
+      `}</style>
+
+      <Viewer3D
+        modelId={modelId}
+        setDownloadProgress={setDownloadProgress}
+        setVisualProgress={setVisualProgress}
+      />
     </div>
   );
 }
