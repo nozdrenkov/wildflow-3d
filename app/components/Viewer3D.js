@@ -12,8 +12,8 @@ import { LRUCache } from "../utils/LRUCache";
 // Constants
 const CONSTANTS = {
   CELL_VISIBILITY_THRESHOLD: 10,
-  MAX_LOADED_CELLS: 30,
-  CACHE_SIZE: 40,
+  MAX_LOADED_CELLS: 32,
+  CACHE_SIZE: 32,
   SCENE_UPDATE_INTERVAL: 5000,
   CELL_UPDATE_INTERVAL: 50,
   COLORS: {
@@ -215,11 +215,12 @@ export default function Viewer3D({
               scale: [1, 1, 1],
               splatAlphaRemovalThreshold: 20,
             })),
-            true,
-            false,
-            true,
-            true,
-            true
+            false, // finalBuild
+            false, // showLoadingUI
+            false, // showLoadingUIForSplatTreeBuild
+            false, // replaceExisting
+            false, // enableRenderBeforeFirstSort
+            true // preserveVisibleRegion
           );
         }
 
