@@ -346,7 +346,7 @@ export class SplatMesh extends THREE.Mesh {
    *                                           the format produced by the splat tree builder worker starts and ends.
    * @return {object} Object containing info about the splats that are updated
    */
-  build(
+  async build(
     splatBuffers,
     sceneOptions,
     keepSceneTransforms = true,
@@ -450,7 +450,7 @@ export class SplatMesh extends THREE.Mesh {
     if (this.enableDistancesComputationOnGPU)
       this.setupDistancesComputationTransformFeedback();
     const dataUpdateResults =
-      this.refreshGPUDataFromSplatBuffers(isUpdateBuild);
+      await this.refreshGPUDataFromSplatBuffers(isUpdateBuild);
 
     for (let i = 0; i < this.scenes.length; i++) {
       this.lastBuildScenes[i] = this.scenes[i];
@@ -642,10 +642,10 @@ export class SplatMesh extends THREE.Mesh {
    * @param {*} end  The index at which to stop copying data
    * @return {object}
    */
-  getDataForDistancesComputation(start, end) {
+  async getDataForDistancesComputation(start, end) {
     const centers = this.integerBasedDistancesComputation
-      ? this.getIntegerCenters(start, end, true)
-      : this.getFloatCenters(start, end, true);
+      ? await this.getIntegerCenters(start, end, true)
+      : await this.getFloatCenters(start, end, true);
     const sceneIndexes = this.getSceneIndexes(start, end);
     return {
       centers,
@@ -658,11 +658,11 @@ export class SplatMesh extends THREE.Mesh {
    * @param {boolean} sinceLastBuildOnly Specify whether or not to only update for splats that have been added since the last build.
    * @return {object}
    */
-  refreshGPUDataFromSplatBuffers(sinceLastBuildOnly) {
+  async refreshGPUDataFromSplatBuffers(sinceLastBuildOnly) {
     const splatCount = this.getSplatCount(true);
-    this.refreshDataTexturesFromSplatBuffers(sinceLastBuildOnly);
+    await this.refreshDataTexturesFromSplatBuffers(sinceLastBuildOnly);
     const updateStart = sinceLastBuildOnly ? this.lastBuildSplatCount : 0;
-    const { centers, sceneIndexes } = this.getDataForDistancesComputation(
+    const { centers, sceneIndexes } = await this.getDataForDistancesComputation(
       updateStart,
       splatCount - 1
     );
@@ -710,17 +710,19 @@ export class SplatMesh extends THREE.Mesh {
    * Refresh data textures with data from the splat buffers for this mesh.
    * @param {boolean} sinceLastBuildOnly Specify whether or not to only update for splats that have been added since the last build.
    */
-  refreshDataTexturesFromSplatBuffers(sinceLastBuildOnly) {
+  async refreshDataTexturesFromSplatBuffers(sinceLastBuildOnly) {
     const splatCount = this.getSplatCount(true);
     const fromSplat = this.lastBuildSplatCount;
     const toSplat = splatCount - 1;
 
     if (!sinceLastBuildOnly) {
       this.setupDataTextures();
-      this.updateBaseDataFromSplatBuffers();
+      await this.updateBaseDataFromSplatBuffers();
     } else {
-      this.updateBaseDataFromSplatBuffers(fromSplat, toSplat);
+      await this.updateBaseDataFromSplatBuffers(fromSplat, toSplat);
     }
+
+    await scheduler.yield();
 
     this.updateDataTexturesFromBaseData(fromSplat, toSplat);
     this.updateVisibleRegion(sinceLastBuildOnly);
@@ -1133,7 +1135,7 @@ export class SplatMesh extends THREE.Mesh {
     this.material.uniforms.sceneCount.value = this.scenes.length;
   }
 
-  updateBaseDataFromSplatBuffers(fromSplat, toSplat) {
+  async updateBaseDataFromSplatBuffers(fromSplat, toSplat) {
     const covarancesTextureDesc = this.splatDataTextures["covariances"];
     const covarianceCompressionLevel = covarancesTextureDesc
       ? covarancesTextureDesc.compressionLevel
@@ -1147,7 +1149,7 @@ export class SplatMesh extends THREE.Mesh {
       ? shITextureDesc.compressionLevel
       : 0;
 
-    this.fillSplatDataArrays(
+    await this.fillSplatDataArrays(
       this.splatDataTextures.baseData.covariances,
       this.splatDataTextures.baseData.scales,
       this.splatDataTextures.baseData.rotations,
@@ -1863,7 +1865,7 @@ export class SplatMesh extends THREE.Mesh {
    * Set the Three.js renderer used by this splat mesh
    * @param {THREE.WebGLRenderer} renderer Instance of THREE.WebGLRenderer
    */
-  setRenderer(renderer) {
+  async setRenderer(renderer) {
     if (renderer !== this.renderer) {
       this.renderer = renderer;
       const gl = this.renderer.getContext();
@@ -1873,10 +1875,11 @@ export class SplatMesh extends THREE.Mesh {
       this.webGLUtils = new THREE.WebGLUtils(gl, extensions, capabilities);
       if (this.enableDistancesComputationOnGPU && this.getSplatCount() > 0) {
         this.setupDistancesComputationTransformFeedback();
-        const { centers, sceneIndexes } = this.getDataForDistancesComputation(
-          0,
-          this.getSplatCount() - 1
-        );
+        const { centers, sceneIndexes } =
+          await this.getDataForDistancesComputation(
+            0,
+            this.getSplatCount() - 1
+          );
         this.refreshGPUBuffersForDistancesComputation(centers, sceneIndexes);
       }
     }
@@ -2473,7 +2476,7 @@ export class SplatMesh extends THREE.Mesh {
    * @param {number} srcEnd The end location from which to pull source data
    * @param {number} destStart The start location from which to write data
    */
-  fillSplatDataArrays(
+  async fillSplatDataArrays(
     covariances,
     scales,
     rotations,
@@ -2532,6 +2535,7 @@ export class SplatMesh extends THREE.Mesh {
           covarianceCompressionLevel
         );
       }
+      await scheduler.yield();
       if (scales || rotations) {
         if (!scales || !rotations) {
           throw new Error(
@@ -2588,10 +2592,10 @@ export class SplatMesh extends THREE.Mesh {
    * @param {boolean} padFour Enforce alignment of 4 by inserting a 1 after every 3 values
    * @return {Int32Array}
    */
-  getIntegerCenters(start, end, padFour = false) {
+  async getIntegerCenters(start, end, padFour = false) {
     const splatCount = end - start + 1;
     const floatCenters = new Float32Array(splatCount * 3);
-    this.fillSplatDataArrays(
+    await this.fillSplatDataArrays(
       null,
       null,
       null,
@@ -2625,10 +2629,10 @@ export class SplatMesh extends THREE.Mesh {
    * @param {boolean} padFour Enforce alignment of 4 by inserting a 1 after every 3 values
    * @return {Float32Array}
    */
-  getFloatCenters(start, end, padFour = false) {
+  async getFloatCenters(start, end, padFour = false) {
     const splatCount = end - start + 1;
     const floatCenters = new Float32Array(splatCount * 3);
-    this.fillSplatDataArrays(
+    await this.fillSplatDataArrays(
       null,
       null,
       null,
@@ -2773,7 +2777,7 @@ export class SplatMesh extends THREE.Mesh {
     return intMatrixArray;
   }
 
-  computeBoundingBox(applySceneTransforms = false, sceneIndex) {
+  async computeBoundingBox(applySceneTransforms = false, sceneIndex) {
     let splatCount = this.getSplatCount();
     if (sceneIndex !== undefined && sceneIndex !== null) {
       if (sceneIndex < 0 || sceneIndex >= this.scenes.length) {
@@ -2785,7 +2789,7 @@ export class SplatMesh extends THREE.Mesh {
     }
 
     const floatCenters = new Float32Array(splatCount * 3);
-    this.fillSplatDataArrays(
+    await this.fillSplatDataArrays(
       null,
       null,
       null,

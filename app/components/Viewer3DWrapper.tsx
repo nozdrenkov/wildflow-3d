@@ -1,6 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import ProgressBar from "./ProgressBar";
 
 const Viewer3D = dynamic(() => import("./Viewer3D"), { ssr: false });
 
