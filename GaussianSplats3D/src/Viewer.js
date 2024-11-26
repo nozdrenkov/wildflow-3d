@@ -649,16 +649,16 @@ export class Viewer {
     this.mouseDownTime = getCurrentTime();
   }
 
-  onMouseUp = await(function () {
+  onMouseUp = (function () {
     const clickOffset = new THREE.Vector2();
 
-    return async function (mouse) {
+    return function (mouse) {
       clickOffset.copy(this.mousePosition).sub(this.mouseDownPosition);
       const mouseUpTime = getCurrentTime();
       const wasClick =
         mouseUpTime - this.mouseDownTime < 0.5 && clickOffset.length() < 2;
       if (wasClick) {
-        await this.onMouseClick(mouse);
+        this.onMouseClick(mouse);
       }
     };
   })();

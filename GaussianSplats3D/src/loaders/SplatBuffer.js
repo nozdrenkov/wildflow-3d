@@ -255,7 +255,7 @@ export class SplatBuffer {
       this.bufferData,
       section.dataBase + srcSplatCentersBase
     );
-
+    await scheduler.yield();
     const x = dataViewFloatForCompressionLevel(
       dataView,
       0,
@@ -273,6 +273,7 @@ export class SplatBuffer {
       2,
       this.compressionLevel
     );
+    await scheduler.yield();
     if (this.compressionLevel >= 1) {
       const bucketIndex = this.getBucketIndex(section, localSplatIndex);
       const bucketBase = bucketIndex * SplatBuffer.BucketStorageSizeFloats;
@@ -286,6 +287,8 @@ export class SplatBuffer {
       outCenter.y = y;
       outCenter.z = z;
     }
+    await scheduler.yield();
+
     if (transform) outCenter.applyMatrix4(transform);
   }
 
