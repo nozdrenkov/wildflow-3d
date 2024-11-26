@@ -1,0 +1,8 @@
+getSplatCenter
+castRayAtSplatTreeNode
+updateVisibleRegion
+addCentersForScene
+intersectSplatMesh
+
+checkForFocalPointChange
+updateMeshCursor

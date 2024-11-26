@@ -438,13 +438,13 @@ export class SplatTree {
     this.subTrees = [];
     const center = new THREE.Vector3();
 
-    const addCentersForScene = (splatOffset, splatCount) => {
+    const addCentersForScene = async (splatOffset, splatCount) => {
       const sceneCenters = new Float32Array(splatCount * 4);
       let addedCount = 0;
       for (let i = 0; i < splatCount; i++) {
         const globalSplatIndex = i + splatOffset;
         if (filterFunc(globalSplatIndex)) {
-          splatMesh.getSplatCenter(globalSplatIndex, center);
+          await splatMesh.getSplatCenter(globalSplatIndex, center);
           const addBase = addedCount * 4;
           sceneCenters[addBase] = center.x;
           sceneCenters[addBase + 1] = center.y;
@@ -468,7 +468,7 @@ export class SplatTree {
 
       if (onIndexesUpload) onIndexesUpload(false);
 
-      delayedExecute(() => {
+      delayedExecute(async () => {
         if (checkForEarlyExit()) return;
 
         const allCenters = [];
@@ -477,12 +477,18 @@ export class SplatTree {
           for (let s = 0; s < splatMesh.scenes.length; s++) {
             const scene = splatMesh.getScene(s);
             const splatCount = scene.splatBuffer.getSplatCount();
-            const sceneCenters = addCentersForScene(splatOffset, splatCount);
+            const sceneCenters = await addCentersForScene(
+              splatOffset,
+              splatCount
+            );
             allCenters.push(sceneCenters);
             splatOffset += splatCount;
           }
         } else {
-          const sceneCenters = addCentersForScene(0, splatMesh.getSplatCount());
+          const sceneCenters = await addCentersForScene(
+            0,
+            splatMesh.getSplatCount()
+          );
           allCenters.push(sceneCenters);
         }
 

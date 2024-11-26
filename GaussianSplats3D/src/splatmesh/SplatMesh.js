@@ -725,7 +725,7 @@ export class SplatMesh extends THREE.Mesh {
     await scheduler.yield();
 
     this.updateDataTexturesFromBaseData(fromSplat, toSplat);
-    this.updateVisibleRegion(sinceLastBuildOnly);
+    await this.updateVisibleRegion(sinceLastBuildOnly);
   }
 
   setupDataTextures() {
@@ -1598,7 +1598,7 @@ export class SplatMesh extends THREE.Mesh {
     }
   }
 
-  updateVisibleRegion(sinceLastBuildOnly) {
+  async updateVisibleRegion(sinceLastBuildOnly) {
     const splatCount = this.getSplatCount(true);
     const tempCenter = new THREE.Vector3();
     if (!sinceLastBuildOnly) {
@@ -1616,7 +1616,7 @@ export class SplatMesh extends THREE.Mesh {
       ? this.lastBuildSplatCount
       : 0;
     for (let i = startSplatFormMaxDistanceCalc; i < splatCount; i++) {
-      this.getSplatCenter(i, tempCenter, true);
+      await this.getSplatCenter(i, tempCenter, true);
       const distFromCSceneCenter = tempCenter
         .sub(this.calculatedSceneCenter)
         .length();
@@ -2668,9 +2668,9 @@ export class SplatMesh extends THREE.Mesh {
   getSplatCenter = (function () {
     const paramsObj = {};
 
-    return function (globalIndex, outCenter, applySceneTransform) {
+    return async function (globalIndex, outCenter, applySceneTransform) {
       this.getLocalSplatParameters(globalIndex, paramsObj, applySceneTransform);
-      paramsObj.splatBuffer.getSplatCenter(
+      await paramsObj.splatBuffer.getSplatCenter(
         paramsObj.localIndex,
         outCenter,
         paramsObj.sceneTransform

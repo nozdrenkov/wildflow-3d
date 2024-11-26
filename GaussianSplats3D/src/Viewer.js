@@ -649,23 +649,23 @@ export class Viewer {
     this.mouseDownTime = getCurrentTime();
   }
 
-  onMouseUp = (function () {
+  onMouseUp = await(function () {
     const clickOffset = new THREE.Vector2();
 
-    return function (mouse) {
+    return async function (mouse) {
       clickOffset.copy(this.mousePosition).sub(this.mouseDownPosition);
       const mouseUpTime = getCurrentTime();
       const wasClick =
         mouseUpTime - this.mouseDownTime < 0.5 && clickOffset.length() < 2;
       if (wasClick) {
-        this.onMouseClick(mouse);
+        await this.onMouseClick(mouse);
       }
     };
   })();
 
-  onMouseClick(mouse) {
+  async onMouseClick(mouse) {
     this.mousePosition.set(mouse.offsetX, mouse.offsetY);
-    this.checkForFocalPointChange();
+    await this.checkForFocalPointChange();
   }
 
   checkForFocalPointChange = (function () {
@@ -673,7 +673,7 @@ export class Viewer {
     const toNewFocalPoint = new THREE.Vector3();
     const outHits = [];
 
-    return function () {
+    return async function () {
       if (!this.transitioningCameraTarget) {
         this.getRenderDimensions(renderDimensions);
         outHits.length = 0;
@@ -682,7 +682,7 @@ export class Viewer {
           this.mousePosition,
           renderDimensions
         );
-        this.raycaster.intersectSplatMesh(this.splatMesh, outHits);
+        await this.raycaster.intersectSplatMesh(this.splatMesh, outHits);
         if (outHits.length > 0) {
           const hit = outHits[0];
           const intersectionPoint = hit.origin;
@@ -2081,7 +2081,7 @@ export class Viewer {
     this.runSplatSort();
     this.updateForRendererSizeChanges();
     this.updateSplatMesh();
-    this.updateMeshCursor();
+    await this.updateMeshCursor();
     this.updateFPS();
     this.timingSensitiveUpdates();
     this.updateInfoPanel();
@@ -2253,7 +2253,7 @@ export class Viewer {
     const outHits = [];
     const renderDimensions = new THREE.Vector2();
 
-    return function () {
+    return async function () {
       if (this.showMeshCursor) {
         this.forceRenderNextFrame();
         this.getRenderDimensions(renderDimensions);
@@ -2263,7 +2263,7 @@ export class Viewer {
           this.mousePosition,
           renderDimensions
         );
-        this.raycaster.intersectSplatMesh(this.splatMesh, outHits);
+        await this.raycaster.intersectSplatMesh(this.splatMesh, outHits);
         if (outHits.length > 0) {
           this.sceneHelper.setMeshCursorVisibility(true);
           this.sceneHelper.positionAndOrientMeshCursor(
