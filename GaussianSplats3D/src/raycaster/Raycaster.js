@@ -30,14 +30,14 @@ export class Raycaster {
           .set(
             ndcCoords.x,
             ndcCoords.y,
-            (camera.near + camera.far) / (camera.near - camera.far)
+            (camera.near + camera.far) / (camera.near - camera.far),
           )
           .unproject(camera);
         this.ray.direction.set(0, 0, -1).transformDirection(camera.matrixWorld);
         this.camera = camera;
       } else {
         throw new Error(
-          "Raycaster::setFromCameraAndScreenPosition() -> Unsupported camera type"
+          "Raycaster::setFromCameraAndScreenPosition() -> Unsupported camera type",
         );
       }
     };
@@ -50,7 +50,7 @@ export class Raycaster {
     const localRay = new Ray();
     const tempPoint = new THREE.Vector3();
 
-    return async function (splatMesh, outHits = []) {
+    return function (splatMesh, outHits = []) {
       const splatTree = splatMesh.getSplatTree();
 
       if (!splatTree) return;
@@ -74,11 +74,11 @@ export class Raycaster {
 
         const outHitsForSubTree = [];
         if (subTree.rootNode) {
-          await this.castRayAtSplatTreeNode(
+          this.castRayAtSplatTreeNode(
             localRay,
             splatTree,
             subTree.rootNode,
-            outHitsForSubTree
+            outHitsForSubTree,
           );
         }
 
@@ -119,7 +119,7 @@ export class Raycaster {
     const fromSphereSpace = new THREE.Matrix4();
     const tempRay = new Ray();
 
-    return async function (ray, splatTree, node, outHits = []) {
+    return function (ray, splatTree, node, outHits = []) {
       if (!ray.intersectBox(node.boundingBox)) {
         return;
       }
@@ -132,14 +132,11 @@ export class Raycaster {
           if (!splatScene.visible) continue;
 
           splatTree.splatMesh.getSplatColor(splatGlobalIndex, tempColor);
-          await splatTree.splatMesh.getSplatCenter(
-            splatGlobalIndex,
-            tempCenter
-          );
+          splatTree.splatMesh.getSplatCenter(splatGlobalIndex, tempCenter);
           splatTree.splatMesh.getSplatScaleAndRotation(
             splatGlobalIndex,
             tempScale,
-            tempRotation
+            tempRotation,
           );
 
           if (
@@ -173,7 +170,7 @@ export class Raycaster {
             uniformScaleMatrix.makeScale(
               uniformScale,
               uniformScale,
-              uniformScale
+              uniformScale,
             );
             fromSphereSpace
               .copy(uniformScaleMatrix)
@@ -203,7 +200,7 @@ export class Raycaster {
       }
       if (node.children && node.children.length > 0) {
         for (let child of node.children) {
-          await this.castRayAtSplatTreeNode(ray, splatTree, child, outHits);
+          this.castRayAtSplatTreeNode(ray, splatTree, child, outHits);
         }
       }
       return outHits;
