@@ -7,9 +7,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { fetchContributors } from "../utils/fetchContributors";
 
+const modelId = "HighResTest";
+
 export default function ModelLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
   params: { modelId: string };
@@ -18,13 +19,12 @@ export default function ModelLayout({
   const [dataSource, setDataSource] = useState("Loading...");
   const pathname = usePathname();
   const router = useRouter();
-  const { modelId } = params;
 
   useEffect(() => {
     fetchContributors(modelId)
       .then((data) => setDataSource(data.dataSource))
       .catch((error) => console.error("Error fetching contributors:", error));
-  }, [modelId]);
+  }, []);
 
   useEffect(() => {
     setShowContributors(pathname.endsWith("/contributors"));

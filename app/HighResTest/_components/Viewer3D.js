@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
-import { LRUCache } from "../utils/LRUCache";
+import { LRUCache } from "../../utils/LRUCache";
 
 const _BASE_PATH = "https://storage.googleapis.com/wildflow/HighResTest";
 const _INFO_PATH = `${_BASE_PATH}/info.json`;
@@ -36,7 +36,6 @@ export default function Viewer3D({
   const viewer = useRef(null);
   const loadedCells = useRef(new Map());
   const bufferCache = useRef(new LRUCache(CONSTANTS.CACHE_SIZE));
-  const lastUpdate = useRef(0);
   const pendingVisualizationUpdate = useRef(null);
   const lastVisualizationUpdate = useRef(0);
   const lastCellUpdate = useRef(0);
@@ -126,7 +125,8 @@ export default function Viewer3D({
     setVisualProgress(progress.visual);
 
     // Update sphere colors immediately
-    for (const [key, cell] of loadedCells.current) {
+
+    for (const [, cell] of loadedCells.current) {
       const isVisible = visibleFilePaths.has(cell.filePath);
       if (cell.loaded) {
         cell.sphere.visible = false;
@@ -229,7 +229,7 @@ export default function Viewer3D({
         }
 
         // Update cell states and hide spheres for visualized cells
-        for (const [_, cell] of loadedCells.current) {
+        for (const [, cell] of loadedCells.current) {
           const isVisible = visibleFilePaths.has(cell.filePath);
           cell.loaded = isVisible;
           if (isVisible) {
