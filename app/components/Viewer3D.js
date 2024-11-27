@@ -9,11 +9,15 @@ import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
 import { LRUCache } from "../utils/LRUCache";
 
+const _BASE_PATH = "https://storage.googleapis.com/wildflow/HighResTest";
+const _INFO_PATH = `${_BASE_PATH}/info.json`;
+const _RESOLUTION = "low"; // could be "high"
+
 // Constants
 const CONSTANTS = {
   CELL_VISIBILITY_THRESHOLD: 10,
-  MAX_LOADED_CELLS: 32,
-  CACHE_SIZE: 32,
+  MAX_LOADED_CELLS: 10,
+  CACHE_SIZE: 10,
   SCENE_UPDATE_INTERVAL: 5000,
   CELL_UPDATE_INTERVAL: 50,
   COLORS: {
@@ -267,15 +271,17 @@ export default function Viewer3D({
     // Initialize cells
     const initializeCells = async () => {
       try {
-        const response = await fetch(`/${modelId}.json`);
+        const response = await fetch(_INFO_PATH);
+        console.log("info json has been fetched from", _INFO_PATH);
         const modelData = await response.json();
 
-        for (const patch of modelData.patches) {
-          const baseFileName = patch.patch.replace(".ply", "");
-          const gridStep = patch.grid_step;
-          const averageZ = patch.average_z;
+        for (const chunk of modelData.chunks) {
+          if (chunk.resolution !== _RESOLUTION) continue;
 
-          for (const [cellX, cellY] of patch.cells) {
+          const gridStep = chunk.gridSize;
+          const averageZ = -4; //chunk.averageZ;
+
+          for (const [cellX, cellY] of chunk.tiles) {
             const sphereGeometry = new THREE.SphereGeometry(
               gridStep / 6,
               32,
@@ -298,7 +304,7 @@ export default function Viewer3D({
               center: cellCenter,
               loaded: false,
               loading: false,
-              filePath: `grid-${gridStep}-ksplat/${baseFileName}_${gridStep}s_${cellX}x_${cellY}y.ksplat`,
+              filePath: `${_BASE_PATH}/${chunk.namePrefix}s${gridStep}_x${cellX}_y${cellY}_${chunk.nameSuffix}`,
               lastUsed: Date.now(),
             });
 
