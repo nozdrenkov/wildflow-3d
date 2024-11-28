@@ -44,14 +44,12 @@ export default function Viewer3D({
     viewerInstanceRef.current = viewer;
 
     viewer
-      .addSplatScene(splatsFileUrl, {
+      .addSplatScene(modelUrl, {
         splatAlphaRemovalThreshold: 5,
         showLoadingUI: false,
-        // x = -1 * 5
-        // y = 6 * 5
-        position: [1 * 5 + 2.5, -6 * 5 + 1 + 2.5, 0],
-        rotation: cameraSettings.rotation || [0, 0, 1, 0],
-        scale: cameraSettings.scale || [1.5, 1.5, 1.5],
+        position: camera.position || [0, 1, 0],
+        rotation: camera.rotation || [0, 0, 0, 1],
+        scale: camera.scale || [1.5, 1.5, 1.5],
         progressiveLoad: true,
       })
       .then(() => {
