@@ -2,13 +2,19 @@ import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import ProgressBar from "./ProgressBar";
 
-const Viewer3D = dynamic(() => import("./Viewer3D"), { ssr: false });
+const TileViewer3D = dynamic(() => import("./TileViewer3D"), { ssr: false });
 
-interface Viewer3DWrapperProps {
-  tileId: string;
+interface Tile3DWrapperProps {
+  modelId: string;
+  tileX: number;
+  tileY: number;
 }
 
-export default function Viewer3DWrapper({ tileId }: Viewer3DWrapperProps) {
+export default function Tile3DWrapper({
+  modelId,
+  tileX,
+  tileY,
+}: Tile3DWrapperProps) {
   const [progress, setProgress] = useState({
     percent: 0,
     message: "Initializing...",
@@ -42,15 +48,10 @@ export default function Viewer3DWrapper({ tileId }: Viewer3DWrapperProps) {
           <div className="text-blue-100 text-xs pr-16">{progress.message}</div>
         </div>
       )}
-      <Viewer3D
-        splatsFileUrl={
-          "https://storage.googleapis.com/wildflow/C0r4Lm7/high-res-grid-5-ksplat/s5_x-1_y6_m7.ksplat"
-        }
-        cameraSettings={{
-          cameraUp: [-0.88106, 0.36779, -0.29742],
-          initialCameraPosition: [-1.2839, 47.3326, 1.32131],
-          initialCameraLookAt: [-3.2187, 48.82279, -4.37543],
-        }}
+      <TileViewer3D
+        modelId={modelId}
+        tileX={tileX}
+        tileY={tileY}
         onProgress={handleProgress}
       />
     </div>

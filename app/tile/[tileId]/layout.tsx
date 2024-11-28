@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import Viewer3DWrapper from "./_components/Viewer3DWrapper";
+import Tile3DWrapper from "./_components/Tile3DWrapper";
 import Image from "next/image";
 import Link from "next/link";
-// import { fetchContributors } from "../utils/fetchContributors";
+import { fetchContributors } from "../../utils/fetchContributors";
 
-export default function TileLayout({
+export default function ModelLayout({
   children,
   params,
 }: {
@@ -20,27 +20,34 @@ export default function TileLayout({
   const router = useRouter();
   const { tileId } = params;
 
-  // useEffect(() => {
-  //   fetchContributors(modelId)
-  //     .then((data) => setDataSource(data.dataSource))
-  //     .catch((error) => console.error("Error fetching contributors:", error));
-  // }, [modelId]);
+  const parseTileId = (tileId: string) => {
+    const [modelId, tileX, tileY] = tileId.split("_");
+    return { modelId, tileX: parseInt(tileX), tileY: parseInt(tileY) };
+  };
 
-  // useEffect(() => {
-  //   setShowContributors(pathname.endsWith("/contributors"));
-  // }, [pathname]);
+  const { modelId, tileX, tileY } = parseTileId(tileId);
 
-  // const handleContributorsToggle = () => {
-  //   if (showContributors) {
-  //     router.push(`/${modelId}`);
-  //   } else {
-  //     router.push(`/${modelId}/contributors`);
-  //   }
-  // };
+  useEffect(() => {
+    fetchContributors(modelId)
+      .then((data) => setDataSource(data.dataSource))
+      .catch((error) => console.error("Error fetching contributors:", error));
+  }, [modelId]);
+
+  useEffect(() => {
+    setShowContributors(pathname.endsWith("/contributors"));
+  }, [pathname]);
+
+  const handleContributorsToggle = () => {
+    if (showContributors) {
+      router.push(`/tile/${tileId}`);
+    } else {
+      router.push(`/${modelId}/contributors`);
+    }
+  };
 
   return (
     <div className="relative w-full h-screen">
-      <Viewer3DWrapper tileId={tileId} />
+      <Tile3DWrapper modelId={modelId} tileX={tileX} tileY={tileY} />
       <div className="absolute bottom-2.5 left-2.5 z-50">
         <Link
           href="https://wildflow.ai"
@@ -56,9 +63,9 @@ export default function TileLayout({
         </Link>
       </div>
       <div className="absolute bottom-0 right-0 z-50 bg-black/70 px-2.5 py-1 text-white font-poppins text-sm leading-[1.4] text-right">
-        {/* <button onClick={handleContributorsToggle} className="hover:underline">
+        <button onClick={handleContributorsToggle} className="hover:underline">
           {dataSource}
-        </button> */}
+        </button>
       </div>
       {showContributors && children}
     </div>

@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
+import { useRouter } from "next/navigation";
 
 export default function Viewer3D({ modelId, onProgress }) {
   const viewerRef = useRef(null);
   const viewerInstanceRef = useRef(null);
   const [isMounted, setIsMounted] = useState(false);
-  const [message, setMessage] = useState("");
-  const [showMessage, setShowMessage] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     setIsMounted(true);
@@ -17,7 +17,7 @@ export default function Viewer3D({ modelId, onProgress }) {
     if (!isMounted || !viewerRef.current) return;
 
     const currentViewerRef = viewerRef.current;
-    const configUrl = `https://storage.googleapis.com/wildflow/C0r4Lm7/metadata.json?v=2`;
+    const configUrl = `https://storage.googleapis.com/wildflow/${modelId}/metadata.json`;
 
     fetch(configUrl)
       .then((response) => response.json())
@@ -44,7 +44,7 @@ export default function Viewer3D({ modelId, onProgress }) {
 
         const threeScene = viewer.threeScene;
         const model = config.model;
-        const modelUrl = `https://storage.googleapis.com/wildflow/C0r4Lm7/${model.filePath}`;
+        const modelUrl = `https://storage.googleapis.com/wildflow/${modelId}/${model.filePath}`;
         viewer
           .addSplatScene(modelUrl, {
             splatAlphaRemovalThreshold: 5,
@@ -90,6 +90,8 @@ export default function Viewer3D({ modelId, onProgress }) {
               boundingBox.userData = {
                 edges: boundingEdges,
                 tilePath: tile.tilePath,
+                tileX: tile.tileX,
+                tileY: tile.tileY,
               };
 
               const centerX = (tile.minX + tile.maxX) / 2;
@@ -133,9 +135,9 @@ export default function Viewer3D({ modelId, onProgress }) {
 
             viewer.renderer.domElement.addEventListener("dblclick", () => {
               if (currentHighlight) {
-                setMessage(currentHighlight.userData.tilePath);
-                setShowMessage(true);
-                setTimeout(() => setShowMessage(false), 3000);
+                router.push(
+                  `/tile/${modelId}_${currentHighlight.userData.tileX}_${currentHighlight.userData.tileY}`
+                );
               }
             });
 
@@ -154,7 +156,7 @@ export default function Viewer3D({ modelId, onProgress }) {
         if (viewer.renderLoop) {
           viewer.renderLoop.stop();
         }
-        if (viewer.splatMesh) {
+        if (viewer.splatMesh && viewer.splatMesh.scene) {
           viewer.splatMesh.scene.remove(viewer.splatMesh);
         }
         if (viewer.renderer) {
@@ -170,13 +172,5 @@ export default function Viewer3D({ modelId, onProgress }) {
 
   if (!isMounted) return null;
 
-  return (
-    <div ref={viewerRef} style={{ width: "100%", height: "100vh" }}>
-      {showMessage && (
-        <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black text-white p-4 rounded">
-          {message}
-        </div>
-      )}
-    </div>
-  );
+  return <div ref={viewerRef} style={{ width: "100%", height: "100vh" }}></div>;
 }

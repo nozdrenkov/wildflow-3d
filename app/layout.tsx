@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Toaster } from "@/components/ui/toaster";
 import { Poppins } from "next/font/google";
 import "./globals.css";
 
@@ -21,6 +22,7 @@ export default function RootLayout({
       </head>
       <body className={`${poppins.className} m-0 overflow-hidden bg-black`}>
         {children}
+        <Toaster />
       </body>
     </html>
   );

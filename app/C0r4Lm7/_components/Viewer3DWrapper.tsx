@@ -21,11 +21,12 @@ export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
     setProgress({ percent, message });
     if (percent >= 100) {
       setIsLoading(false);
-      toast({
-        title: "Model loaded",
-        description:
-          "Double-click on the blue box to open detailed model for that area.",
-      });
+      if (!window.location.search.includes("tile")) {
+        toast({
+          title: "Double-click on blue box",
+          description: "to load high-res model for that area.",
+        });
+      }
     }
   }, []);
 

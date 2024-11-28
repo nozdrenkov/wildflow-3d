@@ -1,24 +1,21 @@
 "use client";
-import { Toaster } from "@/components/ui/toaster";
+
 import { useState, useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Viewer3DWrapper from "./_components/Viewer3DWrapper";
 import Image from "next/image";
 import Link from "next/link";
 import { fetchContributors } from "../utils/fetchContributors";
 
-const MODEL_ID = "C0r4Lm7";
+const modelId = "C0r4Lm7";
 
-export default function AllTilesViewerLayout({
+export default function ModelLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [showContributors, setShowContributors] = useState(false);
   const [dataSource, setDataSource] = useState("Loading...");
-  const pathname = usePathname();
   const router = useRouter();
-  const modelId = MODEL_ID;
 
   useEffect(() => {
     fetchContributors(modelId)
@@ -26,16 +23,8 @@ export default function AllTilesViewerLayout({
       .catch((error) => console.error("Error fetching contributors:", error));
   }, [modelId]);
 
-  useEffect(() => {
-    setShowContributors(pathname.endsWith("/contributors"));
-  }, [pathname]);
-
   const handleContributorsToggle = () => {
-    if (showContributors) {
-      router.push(`/${modelId}`);
-    } else {
-      router.push(`/${modelId}/contributors`);
-    }
+    router.push(`/${modelId}/contributors`);
   };
 
   return (
@@ -55,13 +44,12 @@ export default function AllTilesViewerLayout({
           />
         </Link>
       </div>
-      <Toaster />
       <div className="absolute bottom-0 right-0 z-50 bg-black/70 px-2.5 py-1 text-white font-poppins text-sm leading-[1.4] text-right">
         <button onClick={handleContributorsToggle} className="hover:underline">
           {dataSource}
         </button>
       </div>
-      {showContributors && children}
+      {children}
     </div>
   );
 }
