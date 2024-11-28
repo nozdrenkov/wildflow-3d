@@ -1,5 +1,5 @@
 "use client";
-
+import { Toaster } from "@/components/ui/toaster";
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Viewer3DWrapper from "./_components/Viewer3DWrapper";
@@ -55,6 +55,7 @@ export default function AllTilesViewerLayout({
           />
         </Link>
       </div>
+      <Toaster />
       <div className="absolute bottom-0 right-0 z-50 bg-black/70 px-2.5 py-1 text-white font-poppins text-sm leading-[1.4] text-right">
         <button onClick={handleContributorsToggle} className="hover:underline">
           {dataSource}

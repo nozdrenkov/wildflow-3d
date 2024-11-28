@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import ProgressBar from "./ProgressBar";
+import { useToast } from "@/hooks/use-toast";
 
 const Viewer3D = dynamic(() => import("./Viewer3D"), { ssr: false });
 
@@ -9,6 +10,7 @@ interface Viewer3DWrapperProps {
 }
 
 export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
+  const { toast } = useToast();
   const [progress, setProgress] = useState({
     percent: 0,
     message: "Initializing...",
@@ -19,6 +21,11 @@ export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
     setProgress({ percent, message });
     if (percent >= 100) {
       setIsLoading(false);
+      toast({
+        title: "Model loaded",
+        description:
+          "Double-click on the blue box to open detailed model for that area.",
+      });
     }
   }, []);
 
