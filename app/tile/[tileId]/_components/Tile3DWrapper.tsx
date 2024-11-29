@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import ProgressBar from "./ProgressBar";
+import { useRouter } from "next/navigation";
+import { HomeIcon } from "@heroicons/react/24/solid";
 
 const TileViewer3D = dynamic(() => import("./TileViewer3D"), { ssr: false });
 
@@ -15,6 +17,7 @@ export default function Tile3DWrapper({
   tileX,
   tileY,
 }: Tile3DWrapperProps) {
+  const router = useRouter();
   const [progress, setProgress] = useState({
     percent: 0,
     message: "Initializing...",
@@ -33,8 +36,18 @@ export default function Tile3DWrapper({
     handleProgress(0, "Initializing...");
   }, [handleProgress]);
 
+  const handleHomeClick = () => {
+    router.push(`/${modelId}`);
+  };
+
   return (
     <div className="relative w-full h-screen">
+      <button
+        onClick={handleHomeClick}
+        className="absolute top-4 left-4 bg-white p-2 rounded-full shadow-md z-50"
+      >
+        <HomeIcon className="h-6 w-6 text-blue-500" />
+      </button>
       {isLoading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-transparent z-50 pointer-events-none">
           <div className="flex flex-row items-center justify-center">
