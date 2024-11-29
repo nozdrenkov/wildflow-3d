@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { XMarkIcon } from "@heroicons/react/24/solid";
-import { fetchContributors } from "../../utils/fetchContributors";
+import { fetchContributors } from "../../../utils/fetchContributors";
 import { useEffect, useState } from "react";
 import { ReactNode } from "react";
 
