@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import ProgressBar from "./ProgressBar";
 import { useRouter } from "next/navigation";
 import { HomeIcon } from "@heroicons/react/24/solid";
+import { useToast } from "@/hooks/use-toast";
 
 const TileViewer3D = dynamic(() => import("./TileViewer3D"), { ssr: false });
 
@@ -18,6 +19,7 @@ export default function Tile3DWrapper({
   tileY,
 }: Tile3DWrapperProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const [progress, setProgress] = useState({
     percent: 0,
     message: "Initializing...",
@@ -28,6 +30,10 @@ export default function Tile3DWrapper({
     setProgress({ percent, message });
     if (percent >= 100) {
       setIsLoading(false);
+      toast({
+        title: "Click on the model",
+        description: "to zoom and rotate around that area",
+      });
     }
   }, []);
 

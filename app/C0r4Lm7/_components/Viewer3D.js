@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { useRouter } from "next/navigation";
 import { getDeviceType } from "../../utils/deviceDetect";
 
-export default function Viewer3D({ modelId, onProgress }) {
+export default function Viewer3D({ modelId, onProgress, setSelectedTile }) {
   const viewerRef = useRef(null);
   const viewerInstanceRef = useRef(null);
   const [isMounted, setIsMounted] = useState(false);
@@ -135,6 +135,7 @@ export default function Viewer3D({ modelId, onProgress }) {
                   currentHighlight.material.visible = false;
                   currentHighlight.userData.edges.material.visible = false;
                   currentHighlight = null;
+                  setSelectedTile(null);
                 }
 
                 if (intersects.length > 0) {
@@ -142,6 +143,11 @@ export default function Viewer3D({ modelId, onProgress }) {
                   currentHighlight.material.visible = true;
                   currentHighlight.material.opacity = 0.3;
                   currentHighlight.userData.edges.material.visible = true;
+                  setSelectedTile({
+                    tileX: currentHighlight.userData.tileX,
+                    tileY: currentHighlight.userData.tileY,
+                    tilePath: `/tile/${modelId}_${currentHighlight.userData.tileX}_${currentHighlight.userData.tileY}`,
+                  });
                 }
               }
             );
