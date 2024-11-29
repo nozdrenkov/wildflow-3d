@@ -39,7 +39,7 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
         // Create a Three.js scene
         const threeScene = new THREE.Scene();
 
-        var neighbours = [];
+        var neighbourDirections = [];
         for (const [dx, dy] of [
           [0, +1],
           [-1, 0],
@@ -52,22 +52,22 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
             (tile) => tile.tileX === nx && tile.tileY === ny
           );
           if (neighbourTile) {
-            neighbours.push([nx, ny]);
+            neighbourDirections.push([dx, dy]);
           }
         }
 
-        for (const [nx, ny] of neighbours) {
+        for (const [dx, dy] of neighbourDirections) {
           const averageZ = tile.averageZ + tileCenterOffset[2];
           // Define the vertices of the triangle
           const vertices = new Float32Array([
-            nx * 3.5 - ny,
-            ny * 3.5 - nx,
+            dx * 3.5 - dy,
+            dy * 3.5 - dx,
             averageZ,
-            nx * 4.5,
-            ny * 4.5,
+            dx * 4.5,
+            dy * 4.5,
             averageZ,
-            nx * 3.5 + ny,
-            ny * 3.5 + nx,
+            dx * 3.5 + dy,
+            dy * 3.5 + dx,
             averageZ,
           ]);
 
@@ -112,8 +112,27 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
             }
           };
 
-          // Add event listener to the window
+          // Event listener for mouse click
+          const onClick = (event) => {
+            // Calculate mouse position in normalized device coordinates
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            // Update the raycaster with the camera and mouse position
+            raycaster.setFromCamera(mouse, viewer.camera);
+
+            // Check for intersections with the triangle
+            const intersects = raycaster.intersectObject(triangle);
+
+            const nx = tileX + dx;
+            const ny = tileY + dy;
+            if (intersects.length > 0) {
+              router.push(`/tile/${modelId}_${nx}_${ny}`);
+            }
+          };
+
           window.addEventListener("mousemove", onMouseMove);
+          window.addEventListener("click", onClick);
         }
 
         // Initialize the GaussianSplats3D viewer with the custom scene
@@ -158,8 +177,9 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
       });
 
     return () => {
-      // Remove event listener on cleanup
+      // Remove event listeners on cleanup
       window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("click", onClick);
 
       const viewer = viewerInstanceRef.current;
       if (viewer) {
