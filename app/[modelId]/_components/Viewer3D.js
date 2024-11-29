@@ -17,6 +17,7 @@ export default function Viewer3D({ modelId, onProgress }) {
     if (!isMounted || !viewerRef.current) return;
 
     const currentViewerRef = viewerRef.current;
+    const threeScene = new THREE.Scene();
 
     const prefix = _LOCAL_DATA
       ? `/${modelId}`
@@ -39,12 +40,16 @@ export default function Viewer3D({ modelId, onProgress }) {
           rootElement: viewerRef.current,
           sceneRevealMode: GaussianSplats3D.SceneRevealMode.Gradual,
           crossOrigin: "anonymous",
-          threeScene: new THREE.Scene(),
+          threeScene: threeScene,
           selfDrivenMode: true,
           useWorkers: true,
           workerConfig: {
             crossOriginIsolated: true,
           },
+          dynamicScene: false,
+          freeIntermediateSplatData: true,
+          inMemoryCompressionLevel: 1,
+          renderMode: GaussianSplats3D.RenderMode.OnChange,
           progressCallback: (percent, message) => {
             onProgress(percent, message);
           },
@@ -74,27 +79,65 @@ export default function Viewer3D({ modelId, onProgress }) {
     return () => {
       const viewer = viewerInstanceRef.current;
       if (viewer) {
-        // Stop the animation loop
+        viewer.setRenderMode(GaussianSplats3D.RenderMode.Never);
+
         if (viewer.renderLoop) {
           viewer.renderLoop.stop();
         }
 
-        // Remove the scene
         if (viewer.splatMesh) {
-          viewer.splatMesh.scene.remove(viewer.splatMesh);
+          if (viewer.splatMesh.geometry) {
+            viewer.splatMesh.geometry.dispose();
+          }
+          if (viewer.splatMesh.material) {
+            viewer.splatMesh.material.dispose();
+          }
+          if (viewer.splatMesh.parent) {
+            viewer.splatMesh.parent.remove(viewer.splatMesh);
+          }
         }
 
-        // Dispose of the renderer
         if (viewer.renderer) {
           viewer.renderer.dispose();
+          viewer.renderer.forceContextLoss();
+          const gl = viewer.renderer.getContext();
+          if (gl) {
+            const loseContext = gl.getExtension("WEBGL_lose_context");
+            if (loseContext) loseContext.loseContext();
+          }
+          viewer.renderer.domElement = null;
         }
+      }
 
-        // Use the captured ref
-        if (currentViewerRef && currentViewerRef.firstChild) {
-          currentViewerRef.removeChild(currentViewerRef.firstChild);
+      if (threeScene?.userData?.cleanup) {
+        threeScene.userData.cleanup();
+      }
+
+      threeScene.traverse((object) => {
+        if (object.geometry) {
+          object.geometry.dispose();
         }
+        if (object.material) {
+          if (Array.isArray(object.material)) {
+            object.material.forEach((material) => material.dispose());
+          } else {
+            object.material.dispose();
+          }
+        }
+      });
 
-        viewerInstanceRef.current = null;
+      while (threeScene.children.length > 0) {
+        threeScene.remove(threeScene.children[0]);
+      }
+
+      if (currentViewerRef && currentViewerRef.firstChild) {
+        currentViewerRef.removeChild(currentViewerRef.firstChild);
+      }
+
+      viewerInstanceRef.current = null;
+
+      if (window.gc) {
+        window.gc();
       }
     };
   }, [isMounted, modelId, onProgress]);
