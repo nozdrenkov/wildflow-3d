@@ -6,7 +6,6 @@ import Tile3DWrapper from "./_components/Tile3DWrapper";
 import Image from "next/image";
 import Link from "next/link";
 import { fetchContributors } from "../../utils/fetchContributors";
-import { useToast } from "@/hooks/use-toast";
 
 export default function ModelLayout({
   children,
@@ -20,7 +19,6 @@ export default function ModelLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { tileId } = params;
-  const { toast } = useToast();
 
   const parseTileId = (tileId: string) => {
     const [modelId, tileX, tileY] = tileId.split("_");
