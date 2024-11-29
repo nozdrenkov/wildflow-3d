@@ -147,12 +147,16 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
           rootElement: viewerRef.current,
           sceneRevealMode: GaussianSplats3D.SceneRevealMode.Instant,
           crossOrigin: "anonymous",
-          threeScene: threeScene, // Use the custom scene
+          threeScene: threeScene,
           selfDrivenMode: true,
           useWorkers: true,
           workerConfig: {
             crossOriginIsolated: true,
           },
+          dynamicScene: false,
+          freeIntermediateSplatData: true,
+          inMemoryCompressionLevel: 1,
+          renderMode: GaussianSplats3D.RenderMode.OnChange,
           progressCallback: (percent, message) => {
             onProgress(percent, message);
           },
@@ -181,34 +185,77 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
       });
 
     return () => {
-      // Call the cleanup function if it exists
-      if (threeScene?.userData?.cleanup) {
-        threeScene.userData.cleanup();
-      }
-
+      // Stop rendering first
       const viewer = viewerInstanceRef.current;
       if (viewer) {
+        // Stop any ongoing rendering
+        viewer.setRenderMode(GaussianSplats3D.RenderMode.Never);
+
         // Stop the animation loop
         if (viewer.renderLoop) {
           viewer.renderLoop.stop();
         }
 
-        // Remove the scene
-        if (viewer.splatMesh && viewer.splatMesh.scene) {
-          viewer.splatMesh.scene.remove(viewer.splatMesh);
+        // Remove and dispose of the splat mesh
+        if (viewer.splatMesh) {
+          if (viewer.splatMesh.geometry) {
+            viewer.splatMesh.geometry.dispose();
+          }
+          if (viewer.splatMesh.material) {
+            viewer.splatMesh.material.dispose();
+          }
+          if (viewer.splatMesh.parent) {
+            viewer.splatMesh.parent.remove(viewer.splatMesh);
+          }
         }
 
-        // Dispose of the renderer
+        // Dispose of the renderer properly
         if (viewer.renderer) {
           viewer.renderer.dispose();
+          viewer.renderer.forceContextLoss();
+          const gl = viewer.renderer.getContext();
+          if (gl) {
+            const loseContext = gl.getExtension("WEBGL_lose_context");
+            if (loseContext) loseContext.loseContext();
+          }
+          viewer.renderer.domElement = null;
         }
+      }
 
-        // Use the captured ref
-        if (currentViewerRef && currentViewerRef.firstChild) {
-          currentViewerRef.removeChild(currentViewerRef.firstChild);
+      // Clean up event listeners
+      if (threeScene?.userData?.cleanup) {
+        threeScene.userData.cleanup();
+      }
+
+      // Dispose of all meshes, geometries, and materials
+      threeScene.traverse((object) => {
+        if (object.geometry) {
+          object.geometry.dispose();
         }
+        if (object.material) {
+          if (Array.isArray(object.material)) {
+            object.material.forEach((material) => material.dispose());
+          } else {
+            object.material.dispose();
+          }
+        }
+      });
 
-        viewerInstanceRef.current = null;
+      // Clear the scene
+      while (threeScene.children.length > 0) {
+        threeScene.remove(threeScene.children[0]);
+      }
+
+      // Remove the canvas element
+      if (currentViewerRef && currentViewerRef.firstChild) {
+        currentViewerRef.removeChild(currentViewerRef.firstChild);
+      }
+
+      viewerInstanceRef.current = null;
+
+      // Force garbage collection (though this is just a suggestion to the browser)
+      if (window.gc) {
+        window.gc();
       }
     };
   }, [isMounted, modelId, onProgress]);
