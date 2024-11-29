@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
+import { getDeviceType } from "../../utils/deviceDetect";
 
 export default function Viewer3D({ modelId, onProgress }) {
   const viewerRef = useRef(null);
   const viewerInstanceRef = useRef(null);
   const [isMounted, setIsMounted] = useState(false);
   const router = useRouter();
+  const deviceInfo = getDeviceType();
 
   useEffect(() => {
     setIsMounted(true);
@@ -49,7 +51,13 @@ export default function Viewer3D({ modelId, onProgress }) {
         viewerInstanceRef.current = viewer;
 
         const model = config.model;
-        const modelUrl = `https://storage.googleapis.com/wildflow/${modelId}/${model.filePath}`;
+        var modelUrl = null;
+        console.log("deviceInfo:", deviceInfo);
+        if (deviceInfo.isLowEndDevice) {
+          modelUrl = `https://storage.googleapis.com/wildflow/${modelId}/splats_mobile.ksplat`;
+        } else {
+          modelUrl = `https://storage.googleapis.com/wildflow/${modelId}/${model.filePath}`;
+        }
         viewer
           .addSplatScene(modelUrl, {
             splatAlphaRemovalThreshold: 5,

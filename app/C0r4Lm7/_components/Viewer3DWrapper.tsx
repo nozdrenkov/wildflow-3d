@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import ProgressBar from "./ProgressBar";
 import { useToast } from "@/hooks/use-toast";
+import { getDeviceType } from "../../utils/deviceDetect";
 
 const Viewer3D = dynamic(() => import("./Viewer3D"), { ssr: false });
 
@@ -10,6 +11,7 @@ interface Viewer3DWrapperProps {
 }
 
 export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
+  const deviceInfo = getDeviceType();
   const { toast } = useToast();
   const [progress, setProgress] = useState({
     percent: 0,
@@ -26,6 +28,13 @@ export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
           title: "Double-click on blue box",
           description: "to load high-res model for that area.",
         });
+
+        if (deviceInfo.isLowEndDevice) {
+          toast({
+            title: "Use more powerful computer",
+            description: "This model is cropped for low-end devices.",
+          });
+        }
       }
     }
   }, []);
