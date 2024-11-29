@@ -19,6 +19,7 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
     if (!isMounted || !viewerRef.current) return;
 
     const currentViewerRef = viewerRef.current;
+    const threeScene = new THREE.Scene();
 
     const configUrl = `${_BASE_URL}/${modelId}/metadata.json`;
 
@@ -35,9 +36,6 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
         ];
         const modelUrl = `${_BASE_URL}/${modelId}/${tile.tilePath}`;
         const camera = config.camera;
-
-        // Create a Three.js scene
-        const threeScene = new THREE.Scene();
 
         var neighbourDirections = [];
         for (const [dx, dy] of [
@@ -133,6 +131,12 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
 
           window.addEventListener("mousemove", onMouseMove);
           window.addEventListener("click", onClick);
+
+          // Add cleanup for this specific triangle's listeners
+          threeScene.userData.cleanup = () => {
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("click", onClick);
+          };
         }
 
         // Initialize the GaussianSplats3D viewer with the custom scene
@@ -177,9 +181,10 @@ export default function TileViewer3D({ modelId, tileX, tileY, onProgress }) {
       });
 
     return () => {
-      // Remove event listeners on cleanup
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("click", onClick);
+      // Call the cleanup function if it exists
+      if (threeScene?.userData?.cleanup) {
+        threeScene.userData.cleanup();
+      }
 
       const viewer = viewerInstanceRef.current;
       if (viewer) {
