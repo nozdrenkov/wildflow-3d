@@ -9,15 +9,19 @@ cors.json
       "http://localhost:5173",
       "http://localhost:3000",
       "https://wildflow-demo.firebaseapp.com",
-      "https://wildflow-demo.web.app"
+      "https://wildflow-demo.web.app",
+      "https://nozdrenkov.ghost.io",
+      "https://nozdrenkov.com"
     ],
     "method": ["GET", "HEAD", "OPTIONS"],
     "responseHeader": [
       "Content-Type",
       "Cross-Origin-Resource-Policy",
       "Cross-Origin-Opener-Policy",
-      "Cross-Origin-Embedder-Policy"
-    ],
+      "Cross-Origin-Embedder-Policy",
+      "Access-Control-Allow-Origin",
+      "Access-Control-Allow-Methods"
+    ]
     "maxAgeSeconds": 3600
   }
 ]
