@@ -18,10 +18,8 @@ cors.json
       "Content-Type",
       "Cross-Origin-Resource-Policy",
       "Cross-Origin-Opener-Policy",
-      "Cross-Origin-Embedder-Policy",
-      "Access-Control-Allow-Origin",
-      "Access-Control-Allow-Methods"
-    ]
+      "Cross-Origin-Embedder-Policy"
+    ],
     "maxAgeSeconds": 3600
   }
 ]
