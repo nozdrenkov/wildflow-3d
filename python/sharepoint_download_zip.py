@@ -6,7 +6,7 @@ import os
 from tqdm import tqdm  # Import tqdm for progress bar
 
 def download_files(batch, batch_number):
-    url = 'https://ukwest1-mediap.svc.ms/transform/zip'
+    url = 'https://ukwest1-mediap.svc.ms/transform/zip?cs=fFNQTw'
     
     headers = {
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -31,7 +31,7 @@ def download_files(batch, batch_number):
             {
                 "name": filename,
                 "size": original_files_dict[filename]['size'],
-                "docId": f"https://livelancsac.sharepoint.com:443/_api/v2.0/drives/b!z_EINbNYeUKIJO6z5-G_U9PwBhfZWuJDrn-Gek2u9FQsp2Nb0de-SK0c8mdAeodN/items/{original_files_dict[filename]['id']}?version=Published&access_token=v1.eyJzaXRlaWQiOiIzNTA4ZjFjZi01OGIzLTQyNzktODgyNC1lZWIzZTdlMWJmNTMiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbGl2ZWxhbmNzYWMuc2hhcmVwb2ludC5jb21AOWM5YmNkMTEtOTc3YS00ZTljLWE5YTAtYmM3MzQwOTAxNjRhIiwiZXhwIjoiMTczNDgzNjQwMCJ9.CiMKCXNoYXJpbmdpZBIWY0NzbFZVUE1XVXlZakpHZ3lFRGp4dwoICgNzdHASAXQKCgoEc25pZBICMzMSBgjK6ToQARoOMTg3LjE4OS41MC4xMzAiFG1pY3Jvc29mdC5zaGFyZXBvaW50KixOcGVsbXdTeHlqekgwcTFCTWNTdWg5WTlaU0dFV1VaVmFVbGx4WkkrT2o0PTB2OAFKEGhhc2hlZHByb29mdG9rZW5iBHRydWVyNjBoLmZ8bWVtYmVyc2hpcHx1cm4lM2FzcG8lM2FndWVzdCNub3pkcmVua292QGdtYWlsLmNvbXoBMMIBNjAjLmZ8bWVtYmVyc2hpcHx1cm4lM2FzcG8lM2FndWVzdCNub3pkcmVua292QGdtYWlsLmNvbQ.guFa5T27BQPYZueDayP9f3zfm_1Rpt6iU7nOd-HbO1o",
+                "docId": f"https://livelancsac.sharepoint.com:443/_api/v2.0/drives/b!z_EINbNYeUKIJO6z5-G_U9PwBhfZWuJDrn-Gek2u9FQsp2Nb0de-SK0c8mdAeodN/items/{original_files_dict[filename]['id']}?version=Published&access_token=v1.eyJzaXRlaWQiOiIzNTA4ZjFjZi01OGIzLTQyNzktODgyNC1lZWIzZTdlMWJmNTMiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbGl2ZWxhbmNzYWMuc2hhcmVwb2ludC5jb21AOWM5YmNkMTEtOTc3YS00ZTljLWE5YTAtYmM3MzQwOTAxNjRhIiwiZXhwIjoiMTczNTUxNjgwMCJ9.CiMKCXNoYXJpbmdpZBIWTDEzS0ZmcEo1VUNVYkprNDhBTFplQQoICgNzdHASAXQKCgoEc25pZBICMzMSBgjE7DoQARoPMTg3LjE5MC4xNzUuMjQwIhRtaWNyb3NvZnQuc2hhcmVwb2ludCosTnBlbG13U3h5anpIMHExQk1jU3VoOVk5WlNHRVdVWlZhVWxseFpJK09qND0wdjgBShBoYXNoZWRwcm9vZnRva2VuYgR0cnVlcjYwaC5mfG1lbWJlcnNoaXB8dXJuJTNhc3BvJTNhZ3Vlc3Qjbm96ZHJlbmtvdkBnbWFpbC5jb216ATDCATYwIy5mfG1lbWJlcnNoaXB8dXJuJTNhc3BvJTNhZ3Vlc3Qjbm96ZHJlbmtvdkBnbWFpbC5jb20.ySNnZbB0Y66V6Jw4mErwYnsqNKlWjY5iNtv7l402z3k",
                 "isFolder": False
             }
             for filename in batch
@@ -40,7 +40,7 @@ def download_files(batch, batch_number):
     
     data = {
         'zipFileName': f'OneDrive_batch_{batch_number}.zip',
-        'guid': '8a154f39-dcfd-4e11-8e46-ce7d7857c4b8',
+        'guid': 'bcadd33b-7af1-49af-96d2-68bb73f899c4',  # Updated from curl command
         'provider': 'spo',
         'files': json.dumps(files_data),
         'oAuthToken': ''
@@ -59,7 +59,7 @@ def download_files(batch, batch_number):
         print(response.text)
 
 # Load the file data from the JSON file
-with open('files_2024.json', 'r') as json_file:
+with open('files_2023.json', 'r') as json_file:
     original_files = json.load(json_file)
 
 # Convert the loaded data into the required format
@@ -78,6 +78,8 @@ print(f"Total batches to download: {total_batches}")
 # Download batches in parallel with progress bar
 with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
     futures = {executor.submit(download_files, batch, i + 1): i + 1 for i, batch in enumerate(batches)}
+    # start_from = 1
+    # futures = {executor.submit(download_files, batch, i + 1): i + 1 for i, batch in enumerate(batches[start_from - 1:], start=start_from - 1)}
     for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Downloading batches"):
         batch_number = futures[future]
         try:
