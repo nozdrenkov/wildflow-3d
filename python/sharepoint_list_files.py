@@ -1,6 +1,9 @@
 import requests
 import json
 
+
+_FOLDER = '/sites/Grp-MSSSpermonderestorationfieldwork/Shared Documents/General/Photogrammetry 2023/M7_20230515_Dive 1_Salisi Kecil Healthy/M7_20230515_Dive 1_Salisi Kecil Healthy'
+
 def extract_id_from_url(url):
   start_index = url.find("items/") + len("items/")
 
@@ -24,7 +27,7 @@ def create_request(order_asc=True):
         # 'Paged': 'TRUE',
         'p_FileLeafRef': 'GP_Right (1684).JPG',
         'p_ID': '705404',
-        'RootFolder': '/sites/Grp-MSSSpermonderestorationfieldwork/Shared Documents/General/Photogrammetry 2024/50mx20m plots/Photos + Metashape projects/M7_Salisi_Kecil_Healthy_26.06.2024/M7_Salisi_Kecil_Healthy_26.06.2024_photos',
+        'RootFolder': _FOLDER,
         # 'ix_Paged': 'TRUE',
         'ix_ID': '705404',
         'ix_Key': '01OBEEJLNN24VT5SJFKJC3VUQGGAML44WJ',
@@ -97,7 +100,7 @@ def get_sharepoint_files():
 
 if __name__ == "__main__":
     files = get_sharepoint_files()
-    filename = 'files_2024.json'
+    filename = 'files_2023.json'
     if files:
         with open(filename, 'w') as file:
             json.dump(files, file)
