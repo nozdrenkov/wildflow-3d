@@ -161,36 +161,30 @@ export default function Viewer3D({ modelId, onProgress }) {
       // Start the viewer
       viewer.start();
 
-      // Function to load splats for a 5x5 grid centered at specified coordinates
+      // Modify the loadSplatsForGrid function to load first, then display at once
       const loadSplatsForGrid = async (centerX, centerY) => {
         try {
-          // Show loading indicator immediately
-          onProgress(0, "Preparing to load splats...");
-
+          // Always show progress bar immediately
+          onProgress(5, "Preparing to load splats...");
           console.log(
             `Starting to load splats for grid centered at ${centerX},${centerY}`
           );
+
           const boxSize = 5;
           const halfSize = Math.floor(boxSize / 2);
 
-          // Calculate proper grid center coordinates (should be integer + 0.5 for cell center)
-          const gridCenterX = Math.floor(centerX) + 0.5;
-          const gridCenterY = Math.floor(centerY) + 0.5;
-
-          // Calculate top-left corner of the grid (should be integer)
-          const startX = Math.floor(gridCenterX - halfSize);
-          const startY = Math.floor(gridCenterY - halfSize);
-
-          // Keep track of cell IDs that should be loaded
-          const cellsToLoad = new Set();
+          // Calculate top-left corner of the grid
+          const startX = Math.floor(centerX) - halfSize;
+          const startY = Math.floor(centerY) - halfSize;
 
           // Generate all 25 cell IDs for the 5x5 grid
+          const cellsToLoad = [];
           for (let y = 0; y < boxSize; y++) {
             for (let x = 0; x < boxSize; x++) {
               const cellX = startX + x;
               const cellY = startY + y;
               const cellId = `${cellX}x${cellY}y1s`;
-              cellsToLoad.add(cellId);
+              cellsToLoad.push(cellId);
             }
           }
 
@@ -199,289 +193,203 @@ export default function Viewer3D({ modelId, onProgress }) {
             startX,
             startY,
             boxSize,
-            cellIds: Array.from(cellsToLoad),
+            cellIds: cellsToLoad,
           };
 
-          console.log(
-            `Generated ${cellsToLoad.size} cell IDs to load:`,
-            Array.from(cellsToLoad)
-          );
+          console.log(`Generated ${cellsToLoad.length} cell IDs to load`);
 
-          // Determine which cells need to be removed
-          const cellsToRemove = [];
-          for (const loadedCellId of loadedSplatIdsRef.current) {
-            if (!cellsToLoad.has(loadedCellId)) {
-              cellsToRemove.push(loadedCellId);
+          // First: Clear existing content
+          onProgress(10, "Clearing previous splats...");
+          try {
+            if (viewer.splatMesh && viewer.splatMesh.disposeSplatTree) {
+              viewer.splatMesh.disposeSplatTree();
             }
-          }
 
-          // Determine which cells need to be added (only load cells we don't already have)
-          const cellsToAdd = [];
-          for (const cellId of cellsToLoad) {
-            if (!loadedSplatIdsRef.current.has(cellId)) {
-              cellsToAdd.push(cellId);
-            }
-          }
-
-          console.log(
-            `Cells to add: ${cellsToAdd.length}, Cells to remove: ${cellsToRemove.length}`
-          );
-
-          // First: Remove cells that are outside the new selection
-          if (cellsToRemove.length > 0) {
-            onProgress(
-              10,
-              `Removing ${cellsToRemove.length} cells outside selection...`
-            );
-
+            // Try to reset or clear scenes
             try {
-              // Reset approach - simpler but less efficient
-              if (viewer.splatMesh) {
-                if (viewer.splatMesh.disposeSplatTree) {
-                  viewer.splatMesh.disposeSplatTree();
-                }
-              }
-
-              // Different approach: Keep track of removed cells and only load what's needed
-              for (const cellId of cellsToRemove) {
-                loadedSplatIdsRef.current.delete(cellId);
-              }
-
-              // For now, we'll reload all remaining cells plus new ones
-              const allCellsToLoad = Array.from(cellsToLoad);
-              cellsToAdd.length = 0; // Clear the array
-
-              // Only add cells we haven't already loaded
-              for (const cellId of allCellsToLoad) {
-                if (!loadedSplatIdsRef.current.has(cellId)) {
-                  cellsToAdd.push(cellId);
-                }
-              }
-
-              // Clear scene only if we're about to add cells
-              if (cellsToAdd.length > 0) {
-                // Try to remove all scenes
-                try {
-                  let sceneCount = 0;
-                  try {
-                    sceneCount = viewer.getSceneCount
-                      ? viewer.getSceneCount()
-                      : 0;
-                  } catch (e) {
-                    if (
-                      viewer.splatMesh &&
-                      Array.isArray(viewer.splatMesh.splatBuffers)
-                    ) {
-                      sceneCount = viewer.splatMesh.splatBuffers.length;
-                    }
-                  }
-
-                  if (sceneCount > 0) {
-                    if (viewer.removeSplatScenes) {
-                      const scenesToRemove = Array.from(
-                        { length: sceneCount },
-                        (_, i) => i
-                      );
-                      await viewer.removeSplatScenes(scenesToRemove, false);
-                    } else if (viewer.reset) {
-                      await viewer.reset();
-                    }
-                  }
-
-                  // Clear loaded cells record and prepare to reload all required cells
-                  loadedSplatIdsRef.current.clear();
-                  cellsToAdd.length = 0; // Clear the array
-                  for (const cellId of cellsToLoad) {
-                    cellsToAdd.push(cellId);
-                  }
-                } catch (e) {
-                  console.error("Error resetting scenes:", e);
+              if (viewer.reset) {
+                await viewer.reset();
+              } else if (viewer.getSceneCount && viewer.removeSplatScenes) {
+                const sceneCount = viewer.getSceneCount();
+                if (sceneCount > 0) {
+                  const scenesToRemove = Array.from(
+                    { length: sceneCount },
+                    (_, i) => i
+                  );
+                  await viewer.removeSplatScenes(scenesToRemove, false);
                 }
               }
             } catch (e) {
-              console.error("Error removing cells:", e);
+              console.error("Error resetting scenes:", e);
             }
+
+            // Clear loaded cells record
+            loadedSplatIdsRef.current.clear();
+          } catch (e) {
+            console.error("Error clearing existing content:", e);
           }
 
-          // Second: Download and add new cells
-          if (cellsToAdd.length > 0) {
-            onProgress(20, `Downloading ${cellsToAdd.length} new cells...`);
-            console.log(`Downloading ${cellsToAdd.length} new cells`);
+          // PHASE 1: Load all splat files into buffers (without displaying)
+          onProgress(20, "Downloading splat files...");
+          const splatBuffers = [];
+          const splatConfigs = [];
+          const totalFiles = cellsToLoad.length;
+          let filesLoaded = 0;
 
-            const splatBuffers = [];
-            const splatConfigs = [];
-            const successfullyLoadedCellIds = [];
-            let totalFiles = cellsToAdd.length;
-            let filesLoaded = 0;
+          for (const cellId of cellsToLoad) {
+            const filePath = `/m9/1s/${cellId}.ply`;
+            console.log(`Downloading: ${filePath}`);
 
-            // Create array of download promises
-            const downloadPromises = cellsToAdd.map(async (cellId) => {
-              const filePath = `/m9/1s/${cellId}.ply`;
-              console.log(`Downloading: ${filePath}`);
-
-              // Update z-height from metadata if available
-              if (metadata && metadata[cellId]) {
-                console.log(`Found metadata for ${cellId}:`, metadata[cellId]);
-                boxZ.minZ = metadata[cellId].minZ;
-                boxZ.maxZ = metadata[cellId].maxZ;
-              }
-
-              try {
-                // Check if downloadSplatSceneToSplatBuffer exists
-                if (
-                  typeof viewer.downloadSplatSceneToSplatBuffer === "function"
-                ) {
-                  // Download the splat file to a buffer
-                  const buffer = await viewer.downloadSplatSceneToSplatBuffer(
-                    filePath,
-                    20, // splatAlphaRemovalThreshold
-                    undefined,
-                    false, // showLoadingUI
-                    undefined,
-                    GaussianSplats3D.SceneFormat.Ply
-                  );
-
-                  // If successfully downloaded, store the buffer and configuration
-                  if (buffer) {
-                    splatBuffers.push(buffer);
-                    splatConfigs.push({
-                      position: [0, 0, 0],
-                      rotation: [0, 0, 0, 1],
-                      scale: [1, 1, 1],
-                      splatAlphaRemovalThreshold: 5,
-                      userData: { cellId },
-                    });
-                    successfullyLoadedCellIds.push(cellId);
-                  }
-                } else {
-                  // This will be handled in the next phase
-                  // Just track it as successfully loaded for now
-                  successfullyLoadedCellIds.push(cellId);
-                }
-
-                // Update progress
-                filesLoaded++;
-                onProgress(
-                  20 + Math.round((filesLoaded / totalFiles) * 40),
-                  `Downloaded ${filesLoaded}/${totalFiles} files`
-                );
-              } catch (error) {
-                console.error(`Error downloading cell ${cellId}:`, error);
-                filesLoaded++;
-                onProgress(
-                  20 + Math.round((filesLoaded / totalFiles) * 40),
-                  `Downloaded ${filesLoaded}/${totalFiles} files`
-                );
-              }
-            });
-
-            // Wait for all downloads to complete
-            await Promise.all(downloadPromises);
-            console.log(
-              `Successfully downloaded ${splatBuffers.length} splat buffers`
-            );
-
-            // Third: Add all new splat buffers
-            onProgress(60, "Adding splats to scene...");
-
-            if (
-              splatBuffers.length > 0 &&
-              typeof viewer.addSplatBuffers === "function"
-            ) {
-              // Add all buffers at once if the method exists
-              console.log(
-                `Adding ${splatBuffers.length} new splat buffers to the scene`
-              );
-
-              try {
-                await viewer.addSplatBuffers(
-                  splatBuffers,
-                  splatConfigs,
-                  false, // finalBuild
-                  false, // showLoadingUI
-                  false, // showLoadingUIForSplatTreeBuild
-                  false, // replaceExisting
-                  false, // enableRenderBeforeFirstSort
-                  true // preserveVisibleRegion
-                );
-
-                // Update loaded cells set with successfully loaded cells
-                for (const cellId of successfullyLoadedCellIds) {
-                  loadedSplatIdsRef.current.add(cellId);
-                }
-
-                console.log(
-                  `Successfully added all splat buffers to the scene`
-                );
-              } catch (error) {
-                console.error(`Error adding splat buffers to scene:`, error);
-                // Fall back to individual loading if bulk loading fails
-                await loadIndividually();
-              }
-            } else {
-              // Fall back to loading splats individually
-              await loadIndividually();
+            // Update z-height from metadata if available
+            if (metadata && metadata[cellId]) {
+              boxZ.minZ = metadata[cellId].minZ;
+              boxZ.maxZ = metadata[cellId].maxZ;
             }
 
-            // Function to load splats individually as a fallback
-            async function loadIndividually() {
-              console.log("Using fallback: Loading splats individually");
-              let filesAdded = 0;
+            try {
+              // Check if downloadSplatSceneToSplatBuffer exists
+              if (
+                typeof viewer.downloadSplatSceneToSplatBuffer === "function"
+              ) {
+                // Download only - don't add to scene yet
+                const buffer = await viewer.downloadSplatSceneToSplatBuffer(
+                  filePath,
+                  5, // splatAlphaRemovalThreshold
+                  undefined,
+                  false, // showLoadingUI - we're managing our own progress
+                  undefined,
+                  GaussianSplats3D.SceneFormat.Ply
+                );
 
-              for (const cellId of cellsToAdd) {
-                const filePath = `/m9/1s/${cellId}.ply`;
-                try {
-                  await viewer.addSplatScene(filePath, {
-                    splatAlphaRemovalThreshold: 5,
-                    showLoadingUI: true, // Show loading UI for each file
+                if (buffer) {
+                  splatBuffers.push(buffer);
+                  splatConfigs.push({
                     position: [0, 0, 0],
                     rotation: [0, 0, 0, 1],
                     scale: [1, 1, 1],
-                    format: GaussianSplats3D.SceneFormat.Ply,
-                    progressiveLoad: false,
+                    splatAlphaRemovalThreshold: 5,
                   });
-
                   loadedSplatIdsRef.current.add(cellId);
-                  filesAdded++;
-                  onProgress(
-                    60 + Math.round((filesAdded / cellsToAdd.length) * 30),
-                    `Added ${filesAdded}/${cellsToAdd.length} files`
-                  );
-                } catch (error) {
-                  console.error(`Error loading cell ${cellId}:`, error);
-                  filesAdded++;
-                  onProgress(
-                    60 + Math.round((filesAdded / cellsToAdd.length) * 30),
-                    `Added ${filesAdded}/${cellsToAdd.length} files`
-                  );
                 }
+              } else {
+                // If buffer API isn't available, just store the path for loading in phase 2
+                splatBuffers.push(null);
+                splatConfigs.push({
+                  path: filePath,
+                  position: [0, 0, 0],
+                  rotation: [0, 0, 0, 1],
+                  scale: [1, 1, 1],
+                  splatAlphaRemovalThreshold: 5,
+                  showLoadingUI: false, // We're managing our own progress
+                  format: GaussianSplats3D.SceneFormat.Ply,
+                  progressiveLoad: false,
+                });
               }
+
+              // Update progress
+              filesLoaded++;
+              onProgress(
+                20 + Math.round((filesLoaded / totalFiles) * 70),
+                `Downloaded ${filesLoaded}/${totalFiles} files`
+              );
+            } catch (error) {
+              console.error(`Error downloading cell ${cellId}:`, error);
+              filesLoaded++;
+              onProgress(
+                20 + Math.round((filesLoaded / totalFiles) * 70),
+                `Downloaded ${filesLoaded}/${totalFiles} files (failed on ${cellId})`
+              );
             }
-          } else {
-            console.log("No new cells to add, reusing existing loaded cells");
-            onProgress(80, "Using existing loaded cells...");
           }
 
-          // Update bounding box height based on metadata
-          boundingBox.geometry.dispose();
-          boundingBox.geometry = new THREE.BoxGeometry(
-            boxSize,
-            boxSize,
-            boxZ.maxZ - boxZ.minZ
+          // PHASE 2: Add all splats to the scene at once
+          onProgress(90, "Preparing to display all splats...");
+          console.log(
+            `Downloaded ${
+              splatBuffers.filter((b) => b !== null).length
+            } buffers, now adding to scene`
           );
-          boundingBox.position.z = (boxZ.minZ + boxZ.maxZ) / 2;
 
-          boundingEdges.geometry.dispose();
-          boundingEdges.geometry = new THREE.EdgesGeometry(
-            boundingBox.geometry
-          );
-          boundingEdges.position.copy(boundingBox.position);
+          try {
+            // Add a slight delay to ensure UI updates
+            await new Promise((resolve) => setTimeout(resolve, 100));
 
-          onProgress(100, "Loading complete");
-          setTimeout(() => onProgress(0, ""), 1500); // Clear progress after 1.5 seconds
+            if (
+              typeof viewer.addSplatBuffers === "function" &&
+              splatBuffers.some((b) => b !== null)
+            ) {
+              // Filter out any null buffers
+              const validBuffers = splatBuffers.filter((b) => b !== null);
+              const validConfigs = splatConfigs.slice(0, validBuffers.length);
+
+              // Add all buffers at once
+              console.log(
+                `Adding ${validBuffers.length} splat buffers to scene at once`
+              );
+              onProgress(95, "Adding all splats to scene...");
+
+              await viewer.addSplatBuffers(
+                validBuffers,
+                validConfigs,
+                true, // finalBuild
+                false, // showLoadingUI - we're handling our own progress
+                false, // showLoadingUIForSplatTreeBuild
+                false, // replaceExisting
+                true, // enableRenderBeforeFirstSort
+                true // preserveVisibleRegion
+              );
+            } else {
+              // Fall back to adding scenes one by one, but still without displaying until all are added
+              console.log("Using fallback: Adding splat scenes sequentially");
+
+              // Disable rendering temporarily
+              const originalRenderMode = viewer.renderMode;
+              viewer.setRenderMode(GaussianSplats3D.RenderMode.Never);
+
+              // Add all scenes without rendering between
+              for (let i = 0; i < splatConfigs.length; i++) {
+                const config = splatConfigs[i];
+                if (config.path) {
+                  await viewer.addSplatScene(config.path, config);
+                }
+              }
+
+              // Re-enable rendering once all scenes are added
+              viewer.setRenderMode(originalRenderMode);
+            }
+
+            console.log("All splats added to scene");
+
+            // Update bounding box height based on metadata
+            boundingBox.geometry.dispose();
+            boundingBox.geometry = new THREE.BoxGeometry(
+              boxSize,
+              boxSize,
+              boxZ.maxZ - boxZ.minZ
+            );
+            boundingBox.position.z = (boxZ.minZ + boxZ.maxZ) / 2;
+
+            boundingEdges.geometry.dispose();
+            boundingEdges.geometry = new THREE.EdgesGeometry(
+              boundingBox.geometry
+            );
+            boundingEdges.position.copy(boundingBox.position);
+
+            // Show completion progress and keep it visible briefly
+            onProgress(100, "Loading complete");
+
+            // Keep progress bar visible for a moment after completion
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            onProgress(0, "");
+          } catch (error) {
+            console.error("Error adding splats to scene:", error);
+            onProgress(100, "Error displaying splats");
+            setTimeout(() => onProgress(0, ""), 2000);
+          }
         } catch (error) {
-          console.error("Error loading splats for grid:", error);
-          onProgress(0, ""); // Clear progress on error
+          console.error("Error in main loading process:", error);
+          onProgress(100, "Error loading splats");
+          setTimeout(() => onProgress(0, ""), 2000);
         }
       };
 
@@ -504,103 +412,141 @@ export default function Viewer3D({ modelId, onProgress }) {
           const pointCloud = new THREE.Points(geometry, material);
           threeScene.add(pointCloud);
 
+          // Show point cloud immediately
+          onProgress(35, "Point cloud loaded, loading splats...");
+
           // Load initial splats at camera position after point cloud is loaded
           console.log("Loading initial splats near camera position");
           const initialX = Math.floor(camera.lookAt[0]);
           const initialY = Math.floor(camera.lookAt[1]);
           loadSplatsForGrid(initialX, initialY);
-
-          // Set up raycasting for cursor tracking
-          const raycaster = new THREE.Raycaster();
-          const mouse = new THREE.Vector2();
-
-          // Add mousemove event listener
-          viewer.renderer.domElement.addEventListener("mousemove", (event) => {
-            // Calculate mouse position in normalized device coordinates
-            const rect = viewer.renderer.domElement.getBoundingClientRect();
-            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-            // Update the raycaster
-            raycaster.setFromCamera(mouse, viewer.camera);
-
-            // Project ray into the scene
-            const ray = raycaster.ray;
-
-            // Find the intersection with a horizontal plane at z = (boxZ.minZ + boxZ.maxZ) / 2
-            const planeZ = (boxZ.minZ + boxZ.maxZ) / 2;
-            const t = (planeZ - ray.origin.z) / ray.direction.z;
-
-            // If the ray doesn't intersect with the plane, skip
-            if (t > 0) {
-              // Calculate intersection point
-              const point = new THREE.Vector3();
-              point.copy(ray.origin).addScaledVector(ray.direction, t);
-
-              // Calculate grid cell coordinates (center of the 1m cell the cursor is in)
-              const gridX = Math.floor(point.x) + 0.5;
-              const gridY = Math.floor(point.y) + 0.5;
-
-              // For a 5x5m box, get the center coordinate of the box (should be integer + 0.5)
-              // This ensures the cursor is in the center of the box
-              const boxCenterX = Math.floor(gridX - 2) + 2.5; // Center of 5x5 box
-              const boxCenterY = Math.floor(gridY - 2) + 2.5; // Center of 5x5 box
-
-              // Update bounding box position
-              boundingBox.position.set(boxCenterX, boxCenterY, planeZ);
-              boundingEdges.position.copy(boundingBox.position);
-            }
-          });
-
-          // Add double-click event listener to load splats
-          viewer.renderer.domElement.addEventListener("dblclick", (event) => {
-            // Show progress immediately to give feedback
-            onProgress(5, "Processing double-click...");
-
-            // Calculate mouse position in normalized device coordinates
-            const rect = viewer.renderer.domElement.getBoundingClientRect();
-            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-            // Update the raycaster
-            raycaster.setFromCamera(mouse, viewer.camera);
-
-            // Project ray into the scene
-            const ray = raycaster.ray;
-
-            // Find the intersection with a horizontal plane
-            const planeZ = (boxZ.minZ + boxZ.maxZ) / 2;
-            const t = (planeZ - ray.origin.z) / ray.direction.z;
-
-            // If the ray intersects with the plane
-            if (t > 0) {
-              // Calculate intersection point
-              const point = new THREE.Vector3();
-              point.copy(ray.origin).addScaledVector(ray.direction, t);
-
-              // Load splats for 5x5 grid centered at this point
-              loadSplatsForGrid(point.x, point.y);
-            } else {
-              // Clear progress if no intersection
-              onProgress(0, "");
-            }
-          });
         },
         // Progress callback
         (xhr) => {
           const percentComplete = (xhr.loaded / xhr.total) * 100;
           console.log(`Point cloud loading: ${Math.round(percentComplete)}%`);
-          onProgress(Math.round(percentComplete), "Loading point cloud...");
+          // Keep progress under 30% for point cloud to leave room for splats
+          onProgress(
+            Math.round(percentComplete * 0.3),
+            "Loading point cloud..."
+          );
         },
         // Error callback
         (error) => {
           console.error("Error loading point cloud:", error);
           // Still try to load initial splats even if point cloud fails
           console.log("Loading initial splats at default position");
+          onProgress(30, "Point cloud failed, loading splats...");
           // Try with some default coordinates where we know there are splats
           loadSplatsForGrid(-10, -10);
         }
       );
+
+      // 1. Fix the mousemove event listener to ensure the blue box always moves
+      viewer.renderer.domElement.addEventListener("mousemove", (event) => {
+        // Calculate mouse position in normalized device coordinates
+        const rect = viewer.renderer.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        // Update the raycaster
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, viewer.camera);
+
+        // Project ray into the scene
+        const ray = raycaster.ray;
+
+        // Find the intersection with a horizontal plane at z = (boxZ.minZ + boxZ.maxZ) / 2
+        const planeZ = (boxZ.minZ + boxZ.maxZ) / 2;
+        const t = (planeZ - ray.origin.z) / ray.direction.z;
+
+        // If the ray doesn't intersect with the plane, skip
+        if (t > 0) {
+          // Calculate intersection point
+          const point = new THREE.Vector3();
+          point.copy(ray.origin).addScaledVector(ray.direction, t);
+
+          // Calculate grid cell coordinates (center of the 1m cell the cursor is in)
+          const gridX = Math.floor(point.x) + 0.5;
+          const gridY = Math.floor(point.y) + 0.5;
+
+          // For a 5x5m box, get the center coordinate of the box (should be integer + 0.5)
+          // This ensures the cursor is in the center of the box
+          const boxCenterX = Math.floor(gridX - 2) + 2.5; // Center of 5x5 box
+          const boxCenterY = Math.floor(gridY - 2) + 2.5; // Center of 5x5 box
+
+          // Always update bounding box position, even if in loaded area
+          boundingBox.position.set(boxCenterX, boxCenterY, planeZ);
+          boundingEdges.position.copy(boundingBox.position);
+
+          // Check if cursor is within the currently loaded area
+          let isInLoadedArea = false;
+          if (currentSelectionRef.current) {
+            const { startX, startY, boxSize } = currentSelectionRef.current;
+            if (
+              Math.floor(point.x) >= startX &&
+              Math.floor(point.x) < startX + boxSize &&
+              Math.floor(point.y) >= startY &&
+              Math.floor(point.y) < startY + boxSize
+            ) {
+              isInLoadedArea = true;
+            }
+          }
+
+          // Set visibility based on whether cursor is in loaded area
+          boundingBox.visible = !isInLoadedArea;
+          boundingEdges.visible = !isInLoadedArea;
+        }
+      });
+
+      // 2. Make sure click events are properly handled
+      // Add this right after you start the viewer to ensure camera controls work
+      console.log("Viewer started with camera controls");
+
+      // 3. Fix the double-click handler to ensure it properly loads areas
+      viewer.renderer.domElement.addEventListener("dblclick", (event) => {
+        console.log("Double-click detected");
+
+        // Show progress immediately to give feedback
+        onProgress(5, "Processing double-click...");
+
+        // Calculate mouse position in normalized device coordinates
+        const rect = viewer.renderer.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        // Update the raycaster
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, viewer.camera);
+
+        // Project ray into the scene
+        const ray = raycaster.ray;
+
+        // Find the intersection with a horizontal plane
+        const planeZ = (boxZ.minZ + boxZ.maxZ) / 2;
+        const t = (planeZ - ray.origin.z) / ray.direction.z;
+
+        // If the ray intersects with the plane
+        if (t > 0) {
+          // Calculate intersection point
+          const point = new THREE.Vector3();
+          point.copy(ray.origin).addScaledVector(ray.direction, t);
+
+          console.log(
+            `Double-click intersection at: ${point.x}, ${point.y}, ${point.z}`
+          );
+          loadSplatsForGrid(point.x, point.y).catch((error) => {
+            console.error("Error in loadSplatsForGrid:", error);
+            onProgress(0, "");
+          });
+        } else {
+          // Clear progress if no intersection
+          console.log("Double-click: No intersection with plane");
+          onProgress(0, "");
+        }
+      });
     }
 
     return () => {
