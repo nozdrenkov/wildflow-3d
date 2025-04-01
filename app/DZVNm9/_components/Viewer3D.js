@@ -164,15 +164,22 @@ export default function Viewer3D({ modelId, onProgress }) {
       // Function to load splats for a 5x5 grid centered at specified coordinates
       const loadSplatsForGrid = async (centerX, centerY) => {
         try {
+          // Show loading indicator immediately
+          onProgress(0, "Preparing to load splats...");
+
           console.log(
             `Starting to load splats for grid centered at ${centerX},${centerY}`
           );
           const boxSize = 5;
           const halfSize = Math.floor(boxSize / 2);
 
-          // Calculate top-left corner of the grid
-          const startX = Math.floor(centerX) - halfSize;
-          const startY = Math.floor(centerY) - halfSize;
+          // Calculate proper grid center coordinates (should be integer + 0.5 for cell center)
+          const gridCenterX = Math.floor(centerX) + 0.5;
+          const gridCenterY = Math.floor(centerY) + 0.5;
+
+          // Calculate top-left corner of the grid (should be integer)
+          const startX = Math.floor(gridCenterX - halfSize);
+          const startY = Math.floor(gridCenterY - halfSize);
 
           // Keep track of cell IDs that should be loaded
           const cellsToLoad = new Set();
@@ -200,9 +207,6 @@ export default function Viewer3D({ modelId, onProgress }) {
             Array.from(cellsToLoad)
           );
 
-          // Show loading indicator
-          onProgress(0, "Downloading splat files...");
-
           // Determine which cells need to be removed
           const cellsToRemove = [];
           for (const loadedCellId of loadedSplatIdsRef.current) {
@@ -211,68 +215,107 @@ export default function Viewer3D({ modelId, onProgress }) {
             }
           }
 
-          // First: Instead of trying to remove specific scenes, let's clear all scenes
-          // and reload everything, which is more reliable
-          if (viewer.splatMesh) {
-            onProgress(10, "Clearing existing scenes...");
-            try {
-              if (viewer.splatMesh.disposeSplatTree) {
-                viewer.splatMesh.disposeSplatTree();
-              }
-
-              // Get scene count - use a different approach
-              let sceneCount = 0;
-              try {
-                // Try to determine scene count from the viewer
-                sceneCount = viewer.getSceneCount ? viewer.getSceneCount() : 0;
-              } catch (e) {
-                console.log(
-                  "Could not get scene count using getSceneCount, trying alternative"
-                );
-                // Alternative method if getSceneCount is not available
-                if (
-                  viewer.splatMesh &&
-                  Array.isArray(viewer.splatMesh.splatBuffers)
-                ) {
-                  sceneCount = viewer.splatMesh.splatBuffers.length;
-                }
-              }
-
-              if (sceneCount > 0) {
-                console.log(`Removing ${sceneCount} existing scenes`);
-                if (viewer.removeSplatScenes) {
-                  // If removeSplatScenes is available
-                  const scenesToRemove = Array.from(
-                    { length: sceneCount },
-                    (_, i) => i
-                  );
-                  await viewer.removeSplatScenes(scenesToRemove, false);
-                } else {
-                  // Alternative: Reset the viewer completely
-                  console.log("Using alternative scene removal approach");
-                  await viewer.reset();
-                }
-              }
-
-              // Clear loaded cells record
-              loadedSplatIdsRef.current.clear();
-            } catch (e) {
-              console.error("Error clearing scenes:", e);
-              // Continue anyway, we'll try to add new scenes
+          // Determine which cells need to be added (only load cells we don't already have)
+          const cellsToAdd = [];
+          for (const cellId of cellsToLoad) {
+            if (!loadedSplatIdsRef.current.has(cellId)) {
+              cellsToAdd.push(cellId);
             }
           }
 
-          // Second: Download all splat buffers in parallel
-          onProgress(20, "Downloading new splat files...");
-          const splatBuffers = [];
-          const splatConfigs = [];
-          const successfullyLoadedCellIds = [];
-          let totalFiles = cellsToLoad.size;
-          let filesLoaded = 0;
+          console.log(
+            `Cells to add: ${cellsToAdd.length}, Cells to remove: ${cellsToRemove.length}`
+          );
 
-          // Create array of download promises - fixing the syntax error here
-          const downloadPromises = Array.from(cellsToLoad).map(
-            async (cellId) => {
+          // First: Remove cells that are outside the new selection
+          if (cellsToRemove.length > 0) {
+            onProgress(
+              10,
+              `Removing ${cellsToRemove.length} cells outside selection...`
+            );
+
+            try {
+              // Reset approach - simpler but less efficient
+              if (viewer.splatMesh) {
+                if (viewer.splatMesh.disposeSplatTree) {
+                  viewer.splatMesh.disposeSplatTree();
+                }
+              }
+
+              // Different approach: Keep track of removed cells and only load what's needed
+              for (const cellId of cellsToRemove) {
+                loadedSplatIdsRef.current.delete(cellId);
+              }
+
+              // For now, we'll reload all remaining cells plus new ones
+              const allCellsToLoad = Array.from(cellsToLoad);
+              cellsToAdd.length = 0; // Clear the array
+
+              // Only add cells we haven't already loaded
+              for (const cellId of allCellsToLoad) {
+                if (!loadedSplatIdsRef.current.has(cellId)) {
+                  cellsToAdd.push(cellId);
+                }
+              }
+
+              // Clear scene only if we're about to add cells
+              if (cellsToAdd.length > 0) {
+                // Try to remove all scenes
+                try {
+                  let sceneCount = 0;
+                  try {
+                    sceneCount = viewer.getSceneCount
+                      ? viewer.getSceneCount()
+                      : 0;
+                  } catch (e) {
+                    if (
+                      viewer.splatMesh &&
+                      Array.isArray(viewer.splatMesh.splatBuffers)
+                    ) {
+                      sceneCount = viewer.splatMesh.splatBuffers.length;
+                    }
+                  }
+
+                  if (sceneCount > 0) {
+                    if (viewer.removeSplatScenes) {
+                      const scenesToRemove = Array.from(
+                        { length: sceneCount },
+                        (_, i) => i
+                      );
+                      await viewer.removeSplatScenes(scenesToRemove, false);
+                    } else if (viewer.reset) {
+                      await viewer.reset();
+                    }
+                  }
+
+                  // Clear loaded cells record and prepare to reload all required cells
+                  loadedSplatIdsRef.current.clear();
+                  cellsToAdd.length = 0; // Clear the array
+                  for (const cellId of cellsToLoad) {
+                    cellsToAdd.push(cellId);
+                  }
+                } catch (e) {
+                  console.error("Error resetting scenes:", e);
+                }
+              }
+            } catch (e) {
+              console.error("Error removing cells:", e);
+            }
+          }
+
+          // Second: Download and add new cells
+          if (cellsToAdd.length > 0) {
+            onProgress(20, `Downloading ${cellsToAdd.length} new cells...`);
+            console.log(`Downloading ${cellsToAdd.length} new cells`);
+
+            const splatBuffers = [];
+            const splatConfigs = [];
+            const successfullyLoadedCellIds = [];
+            let totalFiles = cellsToAdd.length;
+            let filesLoaded = 0;
+
+            // Create array of download promises
+            const downloadPromises = cellsToAdd.map(async (cellId) => {
               const filePath = `/m9/1s/${cellId}.ply`;
               console.log(`Downloading: ${filePath}`);
 
@@ -319,90 +362,104 @@ export default function Viewer3D({ modelId, onProgress }) {
                 // Update progress
                 filesLoaded++;
                 onProgress(
-                  20 + Math.round((filesLoaded / totalFiles) * 30),
+                  20 + Math.round((filesLoaded / totalFiles) * 40),
                   `Downloaded ${filesLoaded}/${totalFiles} files`
                 );
               } catch (error) {
                 console.error(`Error downloading cell ${cellId}:`, error);
                 filesLoaded++;
                 onProgress(
-                  20 + Math.round((filesLoaded / totalFiles) * 30),
+                  20 + Math.round((filesLoaded / totalFiles) * 40),
                   `Downloaded ${filesLoaded}/${totalFiles} files`
                 );
               }
-            }
-          );
+            });
 
-          // Wait for all downloads to complete
-          await Promise.all(downloadPromises);
-          console.log(
-            `Successfully downloaded ${splatBuffers.length} splat buffers`
-          );
-
-          // Second: Remove cells that are outside the new selection
-          if (cellsToRemove.length > 0) {
+            // Wait for all downloads to complete
+            await Promise.all(downloadPromises);
             console.log(
-              `Removing ${cellsToRemove.length} cells outside selection`
+              `Successfully downloaded ${splatBuffers.length} splat buffers`
             );
-            onProgress(60, "Removing old splats...");
 
-            // Get the scene IDs for the cells to remove
-            const sceneCount = viewer.getSceneCount();
-            const scenesToRemove = [];
+            // Third: Add all new splat buffers
+            onProgress(60, "Adding splats to scene...");
 
-            for (let i = 0; i < sceneCount; i++) {
-              const sceneInfo = viewer.getSceneInfo(i);
-              if (
-                sceneInfo &&
-                cellsToRemove.includes(sceneInfo.userData?.cellId)
-              ) {
-                scenesToRemove.push(i);
-              }
-            }
-
-            // Remove the scenes
-            if (scenesToRemove.length > 0) {
-              if (viewer.splatMesh) {
-                viewer.splatMesh.disposeSplatTree();
-              }
-              await viewer.removeSplatScenes(scenesToRemove, false);
-
-              // Update loaded cells set
-              for (const cellId of cellsToRemove) {
-                loadedSplatIdsRef.current.delete(cellId);
-              }
-            }
-          }
-
-          // Third: Add all new splat buffers at once
-          if (splatBuffers.length > 0) {
-            console.log(
-              `Adding ${splatBuffers.length} new splat buffers to the scene`
-            );
-            onProgress(75, "Adding new splats...");
-
-            try {
-              // Add all buffers at once
-              await viewer.addSplatBuffers(
-                splatBuffers,
-                splatConfigs,
-                false, // finalBuild
-                false, // showLoadingUI
-                false, // showLoadingUIForSplatTreeBuild
-                false, // replaceExisting
-                false, // enableRenderBeforeFirstSort
-                true // preserveVisibleRegion
+            if (
+              splatBuffers.length > 0 &&
+              typeof viewer.addSplatBuffers === "function"
+            ) {
+              // Add all buffers at once if the method exists
+              console.log(
+                `Adding ${splatBuffers.length} new splat buffers to the scene`
               );
 
-              // Update loaded cells set with successfully loaded cells
-              for (const cellId of successfullyLoadedCellIds) {
-                loadedSplatIdsRef.current.add(cellId);
-              }
+              try {
+                await viewer.addSplatBuffers(
+                  splatBuffers,
+                  splatConfigs,
+                  false, // finalBuild
+                  false, // showLoadingUI
+                  false, // showLoadingUIForSplatTreeBuild
+                  false, // replaceExisting
+                  false, // enableRenderBeforeFirstSort
+                  true // preserveVisibleRegion
+                );
 
-              console.log(`Successfully added all splat buffers to the scene`);
-            } catch (error) {
-              console.error(`Error adding splat buffers to scene:`, error);
+                // Update loaded cells set with successfully loaded cells
+                for (const cellId of successfullyLoadedCellIds) {
+                  loadedSplatIdsRef.current.add(cellId);
+                }
+
+                console.log(
+                  `Successfully added all splat buffers to the scene`
+                );
+              } catch (error) {
+                console.error(`Error adding splat buffers to scene:`, error);
+                // Fall back to individual loading if bulk loading fails
+                await loadIndividually();
+              }
+            } else {
+              // Fall back to loading splats individually
+              await loadIndividually();
             }
+
+            // Function to load splats individually as a fallback
+            async function loadIndividually() {
+              console.log("Using fallback: Loading splats individually");
+              let filesAdded = 0;
+
+              for (const cellId of cellsToAdd) {
+                const filePath = `/m9/1s/${cellId}.ply`;
+                try {
+                  await viewer.addSplatScene(filePath, {
+                    splatAlphaRemovalThreshold: 5,
+                    showLoadingUI: true, // Show loading UI for each file
+                    position: [0, 0, 0],
+                    rotation: [0, 0, 0, 1],
+                    scale: [1, 1, 1],
+                    format: GaussianSplats3D.SceneFormat.Ply,
+                    progressiveLoad: false,
+                  });
+
+                  loadedSplatIdsRef.current.add(cellId);
+                  filesAdded++;
+                  onProgress(
+                    60 + Math.round((filesAdded / cellsToAdd.length) * 30),
+                    `Added ${filesAdded}/${cellsToAdd.length} files`
+                  );
+                } catch (error) {
+                  console.error(`Error loading cell ${cellId}:`, error);
+                  filesAdded++;
+                  onProgress(
+                    60 + Math.round((filesAdded / cellsToAdd.length) * 30),
+                    `Added ${filesAdded}/${cellsToAdd.length} files`
+                  );
+                }
+              }
+            }
+          } else {
+            console.log("No new cells to add, reusing existing loaded cells");
+            onProgress(80, "Using existing loaded cells...");
           }
 
           // Update bounding box height based on metadata
@@ -421,7 +478,7 @@ export default function Viewer3D({ modelId, onProgress }) {
           boundingEdges.position.copy(boundingBox.position);
 
           onProgress(100, "Loading complete");
-          setTimeout(() => onProgress(0, ""), 1000); // Clear progress after 1 second
+          setTimeout(() => onProgress(0, ""), 1500); // Clear progress after 1.5 seconds
         } catch (error) {
           console.error("Error loading splats for grid:", error);
           onProgress(0, ""); // Clear progress on error
@@ -480,22 +537,26 @@ export default function Viewer3D({ modelId, onProgress }) {
               const point = new THREE.Vector3();
               point.copy(ray.origin).addScaledVector(ray.direction, t);
 
-              // Truncate to integer grid (1m)
-              const gridX = Math.floor(point.x);
-              const gridY = Math.floor(point.y);
+              // Calculate grid cell coordinates (center of the 1m cell the cursor is in)
+              const gridX = Math.floor(point.x) + 0.5;
+              const gridY = Math.floor(point.y) + 0.5;
 
-              // Center the box on the grid cell (half of 5m = 2.5m)
-              const centerX = gridX + 2.5;
-              const centerY = gridY + 2.5;
+              // For a 5x5m box, get the center coordinate of the box (should be integer + 0.5)
+              // This ensures the cursor is in the center of the box
+              const boxCenterX = Math.floor(gridX - 2) + 2.5; // Center of 5x5 box
+              const boxCenterY = Math.floor(gridY - 2) + 2.5; // Center of 5x5 box
 
               // Update bounding box position
-              boundingBox.position.set(centerX, centerY, planeZ);
+              boundingBox.position.set(boxCenterX, boxCenterY, planeZ);
               boundingEdges.position.copy(boundingBox.position);
             }
           });
 
           // Add double-click event listener to load splats
           viewer.renderer.domElement.addEventListener("dblclick", (event) => {
+            // Show progress immediately to give feedback
+            onProgress(5, "Processing double-click...");
+
             // Calculate mouse position in normalized device coordinates
             const rect = viewer.renderer.domElement.getBoundingClientRect();
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -519,6 +580,9 @@ export default function Viewer3D({ modelId, onProgress }) {
 
               // Load splats for 5x5 grid centered at this point
               loadSplatsForGrid(point.x, point.y);
+            } else {
+              // Clear progress if no intersection
+              onProgress(0, "");
             }
           });
         },
