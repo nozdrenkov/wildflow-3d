@@ -360,22 +360,48 @@ export default function Viewer3D({ modelId, onProgress }) {
   }
 
   function handleDoubleClick(event, viewer) {
-    // console.log("Double-click detected");
-
-    // Show progress immediately
-    onProgress(5, "Processing double-click...");
-
     // Get mouse position and intersection
     const intersection = getMouseIntersection(event, viewer);
     if (!intersection) {
-      onProgress(0, "");
       return;
     }
 
-    const { point } = intersection;
-    // console.log(
-    //   `Double-click intersection at: ${point.x}, ${point.y}, ${point.z}`
-    // );
+    const { point, gridX, gridY } = intersection;
+
+    // Check if this would be a valid area to load - similar to handleMouseMove logic
+    // Determine start of 5x5 grid containing this point
+    const startX = gridX - _HALF_BOX_SIZE;
+    const startY = gridY - _HALF_BOX_SIZE;
+
+    // Check if there's data available in this grid
+    const zRange = computeZRange(startX, startY);
+    const hasData =
+      zRange.minZ !== _DEFAULT_Z_RANGE.minZ ||
+      zRange.maxZ !== _DEFAULT_Z_RANGE.maxZ;
+
+    // Check if point is within currently loaded area
+    let isInLoadedArea = false;
+    if (currentSelectionRef.current) {
+      const {
+        startX: loadedStartX,
+        startY: loadedStartY,
+        boxSize,
+      } = currentSelectionRef.current;
+      isInLoadedArea =
+        gridX >= loadedStartX &&
+        gridX < loadedStartX + boxSize &&
+        gridY >= loadedStartY &&
+        gridY < loadedStartY + boxSize;
+    }
+
+    // Only proceed if we have data and we're outside the loaded area
+    // (this is the same condition that makes blue box visible)
+    if (!(hasData && !isInLoadedArea)) {
+      return; // Don't do anything if clicking where no blue box would be shown
+    }
+
+    // Continue with loading process since this is a valid area to load
+    onProgress(5, "Processing double-click...");
 
     // Set loading state to true to prevent box movement
     isLoadingRef.current = true;
