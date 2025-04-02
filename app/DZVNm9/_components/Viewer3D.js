@@ -178,17 +178,17 @@ export default function Viewer3D({ modelId, onProgress }) {
   }
 
   function createBoundingBox(threeScene) {
-    // Remove previous box if exists
+    // Remove previous plane if exists
     if (boundingBoxRef.current && boundingBoxRef.current.parent) {
       threeScene.remove(boundingBoxRef.current);
       threeScene.remove(boundingEdgesRef.current);
     }
 
-    const boxDepth = zRangeRef.current.maxZ - zRangeRef.current.minZ;
-    const geometry = new THREE.BoxGeometry(_BOX_SIZE, _BOX_SIZE, boxDepth);
-    const edges = new THREE.EdgesGeometry(geometry);
+    // Create a plane geometry instead of a box
+    const planeGeometry = new THREE.PlaneGeometry(_BOX_SIZE, _BOX_SIZE);
+    const edges = new THREE.EdgesGeometry(planeGeometry);
 
-    const boxMaterial = new THREE.MeshBasicMaterial({
+    const planeMaterial = new THREE.MeshBasicMaterial({
       color: 0x0000ff, // Initial blue color
       transparent: true,
       opacity: 0.3,
@@ -203,32 +203,37 @@ export default function Viewer3D({ modelId, onProgress }) {
       visible: true,
     });
 
-    const boundingBox = new THREE.Mesh(geometry, boxMaterial);
+    const boundingPlane = new THREE.Mesh(planeGeometry, planeMaterial);
     const boundingEdges = new THREE.LineSegments(edges, edgesMaterial);
 
-    // Set initial position
-    const centerZ = (zRangeRef.current.minZ + zRangeRef.current.maxZ) / 2;
-    boundingBox.position.set(0, 0, centerZ);
-    boundingEdges.position.copy(boundingBox.position);
+    // Position at minZ (bottom of the range)
+    boundingPlane.position.set(0, 0, zRangeRef.current.minZ);
+    boundingEdges.position.copy(boundingPlane.position);
+
+    // FIXED: Make the plane horizontal by setting the correct rotation
+    // The plane is created in XY plane by default, so -Math.PI/2 rotation around X makes it vertical
+    // To make it horizontal (parallel to the ground):
+    boundingPlane.rotation.x = 0; // No rotation needed for horizontal plane
+    boundingEdges.rotation.x = 0;
 
     // Add to scene
-    threeScene.add(boundingBox);
+    threeScene.add(boundingPlane);
     threeScene.add(boundingEdges);
 
     // Store references
-    boundingBoxRef.current = boundingBox;
+    boundingBoxRef.current = boundingPlane;
     boundingEdgesRef.current = boundingEdges;
   }
 
   function updateBoundingBox(x, y) {
     if (!boundingBoxRef.current) return;
 
-    const boundingBox = boundingBoxRef.current;
+    const boundingPlane = boundingBoxRef.current;
     const boundingEdges = boundingEdgesRef.current;
 
     // Update position
-    boundingBox.position.x = x;
-    boundingBox.position.y = y;
+    boundingPlane.position.x = x;
+    boundingPlane.position.y = y;
     boundingEdges.position.x = x;
     boundingEdges.position.y = y;
   }
@@ -236,25 +241,16 @@ export default function Viewer3D({ modelId, onProgress }) {
   function updateBoundingBoxGeometry(zMin, zMax) {
     if (!boundingBoxRef.current) return;
 
-    const boundingBox = boundingBoxRef.current;
+    const boundingPlane = boundingBoxRef.current;
     const boundingEdges = boundingEdgesRef.current;
 
-    const boxDepth = zMax - zMin;
-    const centerZ = (zMin + zMax) / 2;
+    // Update z position to be at the minZ height
+    boundingPlane.position.z = zMin;
+    boundingEdges.position.z = zMin;
 
-    // Update bounding box geometry
-    boundingBox.geometry.dispose();
-    boundingBox.geometry = new THREE.BoxGeometry(
-      _BOX_SIZE,
-      _BOX_SIZE,
-      boxDepth
-    );
-    boundingBox.position.z = centerZ;
-
-    // Update edges
-    boundingEdges.geometry.dispose();
-    boundingEdges.geometry = new THREE.EdgesGeometry(boundingBox.geometry);
-    boundingEdges.position.z = centerZ;
+    // No need to recreate the geometry since the plane size remains constant
+    // We could recreate it if the box size needs to change, but it sounds like
+    // we want to keep it constant at _BOX_SIZE
   }
 
   function computeZRange(startX, startY) {
@@ -417,11 +413,11 @@ export default function Viewer3D({ modelId, onProgress }) {
       boundingBoxRef.current.visible = true;
       boundingEdgesRef.current.visible = true;
 
-      // Show the CSS spinner
+      // Show the CSS spinner (positioned above the plane)
       showSpinner({
         x: boundingBoxRef.current.position.x,
         y: boundingBoxRef.current.position.y,
-        z: boundingBoxRef.current.position.z + (zRange.maxZ - zRange.minZ) / 2,
+        z: zRange.minZ, // Position at the minZ (where the plane is)
       });
     }
 
@@ -471,10 +467,14 @@ export default function Viewer3D({ modelId, onProgress }) {
   function showSpinner(position) {
     if (!position) return;
 
-    // Store the 3D position rather than screen coordinates
+    // Position spinner slightly above the plane
     setSpinnerPosition({
       visible: true,
-      worldPos: new THREE.Vector3(position.x, position.y, position.z || 0),
+      worldPos: new THREE.Vector3(
+        position.x,
+        position.y,
+        position.z + 0.1 // Just slightly above the plane
+      ),
     });
   }
 
@@ -510,11 +510,11 @@ export default function Viewer3D({ modelId, onProgress }) {
       updateBoundingBox(boxCenterX, boxCenterY);
       updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
 
-      // Show spinner at box position
+      // Show spinner at square position
       showSpinner({
         x: boxCenterX,
         y: boxCenterY,
-        z: (zRange.minZ + zRange.maxZ) / 2,
+        z: zRange.minZ, // Position at the minZ (where the plane is)
       });
 
       // Force a render to ensure the orange box is visible
@@ -802,7 +802,7 @@ export default function Viewer3D({ modelId, onProgress }) {
           showSpinner({
             x: boxCenterX,
             y: boxCenterY,
-            z: (zRange.minZ + zRange.maxZ) / 2,
+            z: zRange.minZ, // Position at the minZ (where the plane is)
           });
         }
 
@@ -849,7 +849,7 @@ export default function Viewer3D({ modelId, onProgress }) {
           showSpinner({
             x: boxCenterX,
             y: boxCenterY,
-            z: (zRange.minZ + zRange.maxZ) / 2,
+            z: zRange.minZ, // Position at the minZ (where the plane is)
           });
         }
 
