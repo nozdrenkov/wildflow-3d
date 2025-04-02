@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
+import { WorldPositionedSpinner } from "./Spinner";
 
 // Constants
 const _BOX_SIZE = 5;
@@ -935,164 +936,18 @@ export default function Viewer3D({ modelId, onProgress }) {
     hideSpinner();
   }
 
-  useEffect(() => {
-    if (
-      !spinnerPosition.visible ||
-      !spinnerPosition.worldPos ||
-      !viewerInstanceRef.current
-    )
-      return;
-
-    // Function to update spinner position based on camera view
-    const updateSpinnerPosition = () => {
-      const viewer = viewerInstanceRef.current;
-      if (!viewer || !viewer.camera || !viewer.renderer) return;
-
-      // Project the 3D position to screen space
-      const worldPos = spinnerPosition.worldPos.clone();
-      const screenPos = worldPos.project(viewer.camera);
-
-      const canvas = viewer.renderer.domElement;
-      const x = ((screenPos.x + 1) / 2) * canvas.clientWidth;
-      const y = ((-screenPos.y + 1) / 2) * canvas.clientHeight;
-
-      // Update the DOM element position directly
-      const spinnerElem = document.getElementById("spinner-container");
-      if (spinnerElem) {
-        spinnerElem.style.left = `${x}px`;
-        spinnerElem.style.top = `${y}px`;
-      }
-    };
-
-    // Call once initially
-    updateSpinnerPosition();
-
-    // Add to the animation loop
-    const animationId = requestAnimationFrame(function animate() {
-      updateSpinnerPosition();
-      requestAnimationFrame(animate);
-    });
-
-    return () => cancelAnimationFrame(animationId);
-  }, [spinnerPosition.visible, spinnerPosition.worldPos]);
-
-  const SpinnerStyles = () => (
-    <style jsx global>{`
-      .sk-chase {
-        width: 40px;
-        height: 40px;
-        position: relative;
-        animation: sk-chase 2.5s infinite linear both;
-      }
-
-      .sk-chase-dot {
-        width: 100%;
-        height: 100%;
-        position: absolute;
-        left: 0;
-        top: 0;
-        animation: sk-chase-dot 2s infinite ease-in-out both;
-      }
-
-      .sk-chase-dot:before {
-        content: "";
-        display: block;
-        width: 25%;
-        height: 25%;
-        background-color: #ff8800;
-        border-radius: 100%;
-        animation: sk-chase-dot-before 2s infinite ease-in-out both;
-      }
-
-      .sk-chase-dot:nth-child(1) {
-        animation-delay: -1.1s;
-      }
-      .sk-chase-dot:nth-child(2) {
-        animation-delay: -1s;
-      }
-      .sk-chase-dot:nth-child(3) {
-        animation-delay: -0.9s;
-      }
-      .sk-chase-dot:nth-child(4) {
-        animation-delay: -0.8s;
-      }
-      .sk-chase-dot:nth-child(5) {
-        animation-delay: -0.7s;
-      }
-      .sk-chase-dot:nth-child(6) {
-        animation-delay: -0.6s;
-      }
-      .sk-chase-dot:nth-child(1):before {
-        animation-delay: -1.1s;
-      }
-      .sk-chase-dot:nth-child(2):before {
-        animation-delay: -1s;
-      }
-      .sk-chase-dot:nth-child(3):before {
-        animation-delay: -0.9s;
-      }
-      .sk-chase-dot:nth-child(4):before {
-        animation-delay: -0.8s;
-      }
-      .sk-chase-dot:nth-child(5):before {
-        animation-delay: -0.7s;
-      }
-      .sk-chase-dot:nth-child(6):before {
-        animation-delay: -0.6s;
-      }
-
-      @keyframes sk-chase {
-        100% {
-          transform: rotate(360deg);
-        }
-      }
-
-      @keyframes sk-chase-dot {
-        80%,
-        100% {
-          transform: rotate(360deg);
-        }
-      }
-
-      @keyframes sk-chase-dot-before {
-        50% {
-          transform: scale(0.4);
-        }
-        100%,
-        0% {
-          transform: scale(1);
-        }
-      }
-    `}</style>
-  );
-
   if (!isMounted) return null;
 
   return (
     <>
-      <SpinnerStyles />
       <div ref={viewerRef} style={{ width: "100%", height: "100vh" }} />
-      {spinnerPosition.visible && (
-        <div
-          id="spinner-container"
-          style={{
-            position: "absolute",
-            left: "50%", // Initial position - will be updated by effect
-            top: "50%", // Initial position - will be updated by effect
-            transform: "translate(-50%, -50%)",
-            pointerEvents: "none",
-            zIndex: 1000,
-          }}
-        >
-          <div className="sk-chase">
-            <div className="sk-chase-dot"></div>
-            <div className="sk-chase-dot"></div>
-            <div className="sk-chase-dot"></div>
-            <div className="sk-chase-dot"></div>
-            <div className="sk-chase-dot"></div>
-            <div className="sk-chase-dot"></div>
-          </div>
-        </div>
+      {spinnerPosition.visible && viewerInstanceRef.current && (
+        <WorldPositionedSpinner
+          visible={spinnerPosition.visible}
+          worldPos={spinnerPosition.worldPos}
+          camera={viewerInstanceRef.current.camera}
+          renderer={viewerInstanceRef.current.renderer}
+        />
       )}
     </>
   );
