@@ -95,7 +95,14 @@ export default function Viewer3D({ modelId, onProgress }) {
       dynamicScene: true,
       freeIntermediateSplatData: false,
       inMemoryCompressionLevel: 0,
-      renderMode: GaussianSplats3D.RenderMode.OnChange,
+      renderMode: GaussianSplats3D.RenderMode.Always,
+      controlsEnabled: true,
+      disableControlsDuringLoading: false,
+      controlOptions: {
+        autoRotate: false,
+        enableDamping: true,
+        dampingFactor: 0.05,
+      },
       progressCallback: (percent, message) => {
         console.log(`Loading progress: ${percent}% - ${message}`);
         onProgress(percent, message);
@@ -107,11 +114,37 @@ export default function Viewer3D({ modelId, onProgress }) {
     // Add a force render method to the viewer for immediate visual updates
     viewer.forceRender = function () {
       if (this.renderer && this.camera && this.threeScene) {
+        // Update controls before rendering
+        if (this.controls) this.controls.update();
         this.renderer.render(this.threeScene, this.camera);
       } else if (this.renderer && this.camera) {
+        if (this.controls) this.controls.update();
         this.renderer.render(threeScene, this.camera);
       }
     };
+
+    // Set up an animation loop to keep controls responsive during loading
+    const animateControls = () => {
+      if (viewer.controls && viewer.renderer && viewer.camera) {
+        viewer.controls.update();
+        // Only render if we're in loading state to avoid duplicate renders
+        if (isLoadingRef.current) {
+          viewer.renderer.render(
+            viewer.threeScene || threeScene,
+            viewer.camera
+          );
+        }
+      }
+      viewer._controlsAnimationId = requestAnimationFrame(animateControls);
+    };
+
+    // Start the animation loop
+    animateControls();
+
+    // Ensure controls are always enabled
+    if (viewer.controls) {
+      viewer.controls.enabled = true;
+    }
 
     return viewer;
   }
@@ -251,15 +284,17 @@ export default function Viewer3D({ modelId, onProgress }) {
   function setupEventHandlers(viewer) {
     // Handle mouse move
     viewer.renderer.domElement.addEventListener("mousemove", (event) => {
-      // Only process mouse move when not loading
-      if (!isLoadingRef.current) {
-        handleMouseMove(event, viewer);
-      }
+      // We need to allow navigation even during loading,
+      // but only block the bounding box updates
+      handleMouseMove(event, viewer);
     });
 
     // Handle double-click
     viewer.renderer.domElement.addEventListener("dblclick", (event) => {
-      handleDoubleClick(event, viewer);
+      // Only handle double-click if not already loading
+      if (!isLoadingRef.current) {
+        handleDoubleClick(event, viewer);
+      }
     });
   }
 
@@ -270,53 +305,58 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     const { point, gridX, gridY } = intersection;
 
-    // Determine start of 5x5 grid containing this point
-    const startX = gridX - _HALF_BOX_SIZE;
-    const startY = gridY - _HALF_BOX_SIZE;
+    // Only update and show the bounding box if we're not in loading state
+    if (!isLoadingRef.current) {
+      // Determine start of 5x5 grid containing this point
+      const startX = gridX - _HALF_BOX_SIZE;
+      const startY = gridY - _HALF_BOX_SIZE;
 
-    // Calculate box center
-    const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
-    const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
+      // Calculate box center
+      const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
+      const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
 
-    // Calculate Z range for this grid
-    const zRange = computeZRange(startX, startY);
-    const hasData =
-      zRange.minZ !== _DEFAULT_Z_RANGE.minZ ||
-      zRange.maxZ !== _DEFAULT_Z_RANGE.maxZ;
+      // Calculate Z range for this grid
+      const zRange = computeZRange(startX, startY);
+      const hasData =
+        zRange.minZ !== _DEFAULT_Z_RANGE.minZ ||
+        zRange.maxZ !== _DEFAULT_Z_RANGE.maxZ;
 
-    // Update box geometry if Z range changed
-    if (
-      hasData &&
-      (zRange.minZ !== zRangeRef.current.minZ ||
-        zRange.maxZ !== zRangeRef.current.maxZ)
-    ) {
-      zRangeRef.current = zRange;
-      updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
+      // Update box geometry if Z range changed
+      if (
+        hasData &&
+        (zRange.minZ !== zRangeRef.current.minZ ||
+          zRange.maxZ !== zRangeRef.current.maxZ)
+      ) {
+        zRangeRef.current = zRange;
+        updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
+      }
+
+      // Update box position
+      updateBoundingBox(boxCenterX, boxCenterY);
+
+      // Check if point is within currently loaded area
+      let isInLoadedArea = false;
+      if (currentSelectionRef.current) {
+        const {
+          startX: loadedStartX,
+          startY: loadedStartY,
+          boxSize,
+        } = currentSelectionRef.current;
+        isInLoadedArea =
+          gridX >= loadedStartX &&
+          gridX < loadedStartX + boxSize &&
+          gridY >= loadedStartY &&
+          gridY < loadedStartY + boxSize;
+      }
+
+      // Only show the box if we have data and we're outside the loaded area
+      if (boundingBoxRef.current) {
+        boundingBoxRef.current.visible = hasData && !isInLoadedArea;
+        boundingEdgesRef.current.visible = hasData && !isInLoadedArea;
+      }
     }
-
-    // Update box position
-    updateBoundingBox(boxCenterX, boxCenterY);
-
-    // Check if point is within currently loaded area
-    let isInLoadedArea = false;
-    if (currentSelectionRef.current) {
-      const {
-        startX: loadedStartX,
-        startY: loadedStartY,
-        boxSize,
-      } = currentSelectionRef.current;
-      isInLoadedArea =
-        gridX >= loadedStartX &&
-        gridX < loadedStartX + boxSize &&
-        gridY >= loadedStartY &&
-        gridY < loadedStartY + boxSize;
-    }
-
-    // Only show the box if we have data and we're outside the loaded area
-    if (boundingBoxRef.current) {
-      boundingBoxRef.current.visible = hasData && !isInLoadedArea;
-      boundingEdgesRef.current.visible = hasData && !isInLoadedArea;
-    }
+    // We're not returning here, so the event continues to propagate
+    // to the camera controls, allowing navigation even during loading
   }
 
   function handleDoubleClick(event, viewer) {
@@ -395,6 +435,12 @@ export default function Viewer3D({ modelId, onProgress }) {
       // Make sure loading state is true
       isLoadingRef.current = true;
 
+      // Ensure controls remain enabled during loading
+      const viewer = viewerInstanceRef.current;
+      if (viewer && viewer.controls) {
+        viewer.controls.enabled = true;
+      }
+
       onProgress(5, "Preparing to load splats...");
       console.log(`Loading splats for grid centered at ${centerX},${centerY}`);
 
@@ -420,7 +466,6 @@ export default function Viewer3D({ modelId, onProgress }) {
       }
 
       // Force a render to ensure the orange box is visible
-      const viewer = viewerInstanceRef.current;
       if (viewer && viewer.forceRender) {
         viewer.forceRender();
       }
@@ -506,59 +551,76 @@ export default function Viewer3D({ modelId, onProgress }) {
     const totalFiles = cellsToLoad.length;
     let filesLoaded = 0;
 
-    for (const cellId of cellsToLoad) {
-      const filePath = `${_SPLAT_FOLDER}/${cellId}.ply`;
-      console.log(`Downloading: ${filePath}`);
+    // Force a render before starting downloads to ensure UI is updated
+    if (viewer.forceRender) {
+      viewer.forceRender();
+    }
 
-      try {
-        if (typeof viewer.downloadSplatSceneToSplatBuffer === "function") {
-          const buffer = await viewer.downloadSplatSceneToSplatBuffer(
-            filePath,
-            5, // splatAlphaRemovalThreshold
-            undefined,
-            false, // showLoadingUI
-            undefined,
-            GaussianSplats3D.SceneFormat.Ply
-          );
+    // Process files in batches to allow UI updates between downloads
+    const batchSize = 5;
+    for (let i = 0; i < cellsToLoad.length; i += batchSize) {
+      const batch = cellsToLoad.slice(i, i + batchSize);
 
-          if (buffer) {
-            splatBuffers.push(buffer);
-            splatConfigs.push({
-              position: [0, 0, 0],
-              rotation: [0, 0, 0, 1],
-              scale: [1, 1, 1],
-              splatAlphaRemovalThreshold: 5,
-            });
-            loadedSplatIdsRef.current.add(cellId);
+      // Process this batch in parallel
+      await Promise.all(
+        batch.map(async (cellId) => {
+          const filePath = `${_SPLAT_FOLDER}/${cellId}.ply`;
+          console.log(`Downloading: ${filePath}`);
+
+          try {
+            if (typeof viewer.downloadSplatSceneToSplatBuffer === "function") {
+              const buffer = await viewer.downloadSplatSceneToSplatBuffer(
+                filePath,
+                5, // splatAlphaRemovalThreshold
+                undefined,
+                false, // showLoadingUI
+                undefined,
+                GaussianSplats3D.SceneFormat.Ply
+              );
+
+              if (buffer) {
+                splatBuffers.push(buffer);
+                splatConfigs.push({
+                  position: [0, 0, 0],
+                  rotation: [0, 0, 0, 1],
+                  scale: [1, 1, 1],
+                  splatAlphaRemovalThreshold: 5,
+                });
+                loadedSplatIdsRef.current.add(cellId);
+              }
+            } else {
+              // Fallback for older API
+              splatBuffers.push(null);
+              splatConfigs.push({
+                path: filePath,
+                position: [0, 0, 0],
+                rotation: [0, 0, 0, 1],
+                scale: [1, 1, 1],
+                splatAlphaRemovalThreshold: 5,
+                showLoadingUI: false,
+                format: GaussianSplats3D.SceneFormat.Ply,
+                progressiveLoad: false,
+              });
+            }
+          } catch (error) {
+            console.error(`Error downloading cell ${cellId}:`, error);
           }
-        } else {
-          // Fallback for older API
-          splatBuffers.push(null);
-          splatConfigs.push({
-            path: filePath,
-            position: [0, 0, 0],
-            rotation: [0, 0, 0, 1],
-            scale: [1, 1, 1],
-            splatAlphaRemovalThreshold: 5,
-            showLoadingUI: false,
-            format: GaussianSplats3D.SceneFormat.Ply,
-            progressiveLoad: false,
-          });
-        }
 
-        // Update progress
-        filesLoaded++;
-        onProgress(
-          20 + Math.round((filesLoaded / totalFiles) * 70),
-          `Downloaded ${filesLoaded}/${totalFiles} files`
-        );
-      } catch (error) {
-        console.error(`Error downloading cell ${cellId}:`, error);
-        filesLoaded++;
-        onProgress(
-          20 + Math.round((filesLoaded / totalFiles) * 70),
-          `Downloaded ${filesLoaded}/${totalFiles} files (failed on ${cellId})`
-        );
+          // Update progress for this file
+          filesLoaded++;
+          onProgress(
+            20 + Math.round((filesLoaded / totalFiles) * 70),
+            `Downloaded ${filesLoaded}/${totalFiles} files`
+          );
+        })
+      );
+
+      // Give the main thread some time to breathe between batches
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Force a render to keep the UI responsive
+      if (viewer.forceRender) {
+        viewer.forceRender();
       }
     }
 
@@ -570,6 +632,11 @@ export default function Viewer3D({ modelId, onProgress }) {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     try {
+      // Ensure controls remain enabled
+      if (viewer && viewer.controls) {
+        viewer.controls.enabled = true;
+      }
+
       if (
         typeof viewer.addSplatBuffers === "function" &&
         splatBuffers.some((b) => b !== null)
@@ -742,6 +809,11 @@ export default function Viewer3D({ modelId, onProgress }) {
 
       if (viewer.renderLoop) {
         viewer.renderLoop.stop();
+      }
+
+      // Cancel our controls animation loop
+      if (viewer._controlsAnimationId) {
+        cancelAnimationFrame(viewer._controlsAnimationId);
       }
 
       if (viewer.splatMesh) {
