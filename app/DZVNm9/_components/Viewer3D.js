@@ -103,6 +103,16 @@ export default function Viewer3D({ modelId, onProgress }) {
     });
 
     viewer.start();
+
+    // Add a force render method to the viewer for immediate visual updates
+    viewer.forceRender = function () {
+      if (this.renderer && this.camera && this.threeScene) {
+        this.renderer.render(this.threeScene, this.camera);
+      } else if (this.renderer && this.camera) {
+        this.renderer.render(threeScene, this.camera);
+      }
+    };
+
     return viewer;
   }
 
@@ -382,6 +392,9 @@ export default function Viewer3D({ modelId, onProgress }) {
 
   async function loadSplatsForGrid(centerX, centerY) {
     try {
+      // Make sure loading state is true
+      isLoadingRef.current = true;
+
       onProgress(5, "Preparing to load splats...");
       console.log(`Loading splats for grid centered at ${centerX},${centerY}`);
 
@@ -392,6 +405,25 @@ export default function Viewer3D({ modelId, onProgress }) {
       // Compute Z range for this grid
       const zRange = computeZRange(startX, startY);
       zRangeRef.current = zRange;
+
+      // Update box position for current load area
+      const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
+      const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
+      updateBoundingBox(boxCenterX, boxCenterY);
+      updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
+
+      // Ensure box is orange and visible during the entire loading process
+      if (boundingBoxRef.current) {
+        boundingBoxRef.current.material.color.set(0xff8800); // Orange color
+        boundingBoxRef.current.visible = true;
+        boundingEdgesRef.current.visible = true;
+      }
+
+      // Force a render to ensure the orange box is visible
+      const viewer = viewerInstanceRef.current;
+      if (viewer && viewer.forceRender) {
+        viewer.forceRender();
+      }
 
       // Generate cell IDs for the grid
       const cellsToLoad = [];
@@ -411,8 +443,6 @@ export default function Viewer3D({ modelId, onProgress }) {
         boxSize: _BOX_SIZE,
         cellIds: cellsToLoad,
       };
-
-      const viewer = viewerInstanceRef.current;
 
       // 1. Clear existing content
       onProgress(10, "Clearing previous splats...");
@@ -606,6 +636,13 @@ export default function Viewer3D({ modelId, onProgress }) {
 
   function loadPointCloud(threeScene, viewer) {
     const loader = new PLYLoader();
+
+    // Set the loading state to true initially
+    isLoadingRef.current = true;
+
+    // Show progress immediately
+    onProgress(5, "Loading point cloud...");
+
     loader.load(
       _POINT_CLOUD_PATH,
       // Success callback
@@ -623,11 +660,42 @@ export default function Viewer3D({ modelId, onProgress }) {
         const pointCloud = new THREE.Points(geometry, material);
         threeScene.add(pointCloud);
 
-        // Show point cloud and load initial splats
-        onProgress(35, "Point cloud loaded, loading splats...");
+        // Get initial position and set orange bounding box
         const initialX = Math.floor(_DEFAULT_CAMERA.lookAt[0]);
         const initialY = Math.floor(_DEFAULT_CAMERA.lookAt[1]);
-        loadSplatsForGrid(initialX, initialY);
+
+        // Calculate grid and update bounding box
+        const startX = initialX - _HALF_BOX_SIZE;
+        const startY = initialY - _HALF_BOX_SIZE;
+        const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
+        const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
+
+        // Calculate Z range for this grid
+        const zRange = computeZRange(startX, startY);
+        zRangeRef.current = zRange;
+
+        // Update bounding box geometry with the proper z-range
+        updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
+
+        // Update box position and make it visible with orange color
+        updateBoundingBox(boxCenterX, boxCenterY);
+        if (boundingBoxRef.current) {
+          boundingBoxRef.current.material.color.set(0xff8800); // Orange color
+          boundingBoxRef.current.visible = true;
+          boundingEdgesRef.current.visible = true;
+        }
+
+        // IMPORTANT: Force a render to make the point cloud visible immediately
+        viewer.forceRender();
+
+        // A slight delay to ensure the point cloud is visible before starting splat loading
+        setTimeout(() => {
+          // Show point cloud and prepare to load splats
+          onProgress(35, "Point cloud loaded, loading splats...");
+
+          // Now load the initial splats (the orange box will stay visible until splats are loaded)
+          loadSplatsForGrid(initialX, initialY);
+        }, 500); // Small delay to ensure the point cloud renders
       },
       // Progress callback
       (xhr) => {
@@ -639,7 +707,30 @@ export default function Viewer3D({ modelId, onProgress }) {
       (error) => {
         console.error("Error loading point cloud:", error);
         onProgress(30, "Point cloud failed, loading splats...");
-        loadSplatsForGrid(-10, -10); // Try with default coordinates
+
+        // Even if point cloud fails, try to load splats with default coordinates
+        const initialX = Math.floor(_DEFAULT_CAMERA.lookAt[0]);
+        const initialY = Math.floor(_DEFAULT_CAMERA.lookAt[1]);
+
+        // Set orange bounding box
+        const startX = initialX - _HALF_BOX_SIZE;
+        const startY = initialY - _HALF_BOX_SIZE;
+        const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
+        const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
+
+        updateBoundingBox(boxCenterX, boxCenterY);
+        if (boundingBoxRef.current) {
+          boundingBoxRef.current.material.color.set(0xff8800); // Orange color
+          boundingBoxRef.current.visible = true;
+          boundingEdgesRef.current.visible = true;
+        }
+
+        // IMPORTANT: Force a render to make the box visible immediately
+        viewer.forceRender();
+
+        setTimeout(() => {
+          loadSplatsForGrid(initialX, initialY);
+        }, 300);
       }
     );
   }
