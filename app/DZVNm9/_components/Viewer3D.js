@@ -33,6 +33,10 @@ export default function Viewer3D({ modelId, onProgress }) {
   const zRangeRef = useRef({ ..._DEFAULT_Z_RANGE });
   const isLoadingRef = useRef(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [spinnerPosition, setSpinnerPosition] = useState({
+    visible: false,
+    worldPos: null,
+  });
 
   useEffect(() => {
     setIsMounted(true);
@@ -411,6 +415,13 @@ export default function Viewer3D({ modelId, onProgress }) {
       boundingBoxRef.current.material.color.set(0xff8800); // Orange color
       boundingBoxRef.current.visible = true;
       boundingEdgesRef.current.visible = true;
+
+      // Show the CSS spinner
+      showSpinner({
+        x: boundingBoxRef.current.position.x,
+        y: boundingBoxRef.current.position.y,
+        z: boundingBoxRef.current.position.z + (zRange.maxZ - zRange.minZ) / 2,
+      });
     }
 
     loadSplatsForGrid(point.x, point.y).catch((error) => {
@@ -456,6 +467,20 @@ export default function Viewer3D({ modelId, onProgress }) {
     return { point, gridX, gridY };
   }
 
+  function showSpinner(position) {
+    if (!position) return;
+
+    // Store the 3D position rather than screen coordinates
+    setSpinnerPosition({
+      visible: true,
+      worldPos: new THREE.Vector3(position.x, position.y, position.z || 0),
+    });
+  }
+
+  function hideSpinner() {
+    setSpinnerPosition((prev) => ({ ...prev, visible: false }));
+  }
+
   async function loadSplatsForGrid(centerX, centerY) {
     try {
       // Make sure loading state is true
@@ -484,12 +509,12 @@ export default function Viewer3D({ modelId, onProgress }) {
       updateBoundingBox(boxCenterX, boxCenterY);
       updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
 
-      // Ensure box is orange and visible during the entire loading process
-      if (boundingBoxRef.current) {
-        boundingBoxRef.current.material.color.set(0xff8800); // Orange color
-        boundingBoxRef.current.visible = true;
-        boundingEdgesRef.current.visible = true;
-      }
+      // Show spinner at box position
+      showSpinner({
+        x: boxCenterX,
+        y: boxCenterY,
+        z: (zRange.minZ + zRange.maxZ) / 2,
+      });
 
       // Force a render to ensure the orange box is visible
       if (viewer && viewer.forceRender) {
@@ -535,6 +560,7 @@ export default function Viewer3D({ modelId, onProgress }) {
 
       // 5. Show completion
       onProgress(100, "Loading complete");
+      hideSpinner();
       setTimeout(() => onProgress(0, ""), 1500);
     } catch (error) {
       console.error("Error loading splats:", error);
@@ -543,6 +569,9 @@ export default function Viewer3D({ modelId, onProgress }) {
 
       // Make sure to reset loading state even if error occurs
       isLoadingRef.current = false;
+
+      // Hide spinner on error
+      hideSpinner();
     }
   }
 
@@ -697,6 +726,9 @@ export default function Viewer3D({ modelId, onProgress }) {
         boundingBoxRef.current.material.color.set(0x0000ff);
       }
 
+      // Hide the spinner
+      hideSpinner();
+
       // Reset loading state to allow mouse movement to affect box again
       isLoadingRef.current = false;
     } catch (error) {
@@ -707,6 +739,10 @@ export default function Viewer3D({ modelId, onProgress }) {
       }
       // Make sure to reset loading state
       isLoadingRef.current = false;
+
+      // Hide the spinner on error
+      hideSpinner();
+
       throw error;
     }
   }
@@ -760,6 +796,13 @@ export default function Viewer3D({ modelId, onProgress }) {
           boundingBoxRef.current.material.color.set(0xff8800); // Orange color
           boundingBoxRef.current.visible = true;
           boundingEdgesRef.current.visible = true;
+
+          // Show spinner
+          showSpinner({
+            x: boxCenterX,
+            y: boxCenterY,
+            z: (zRange.minZ + zRange.maxZ) / 2,
+          });
         }
 
         // IMPORTANT: Force a render to make the point cloud visible immediately
@@ -800,6 +843,13 @@ export default function Viewer3D({ modelId, onProgress }) {
           boundingBoxRef.current.material.color.set(0xff8800); // Orange color
           boundingBoxRef.current.visible = true;
           boundingEdgesRef.current.visible = true;
+
+          // Show spinner
+          showSpinner({
+            x: boxCenterX,
+            y: boxCenterY,
+            z: (zRange.minZ + zRange.maxZ) / 2,
+          });
         }
 
         // IMPORTANT: Force a render to make the box visible immediately
@@ -880,9 +930,170 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     // Force garbage collection if available
     if (window.gc) window.gc();
+
+    // Hide spinner when cleaning up
+    hideSpinner();
   }
+
+  useEffect(() => {
+    if (
+      !spinnerPosition.visible ||
+      !spinnerPosition.worldPos ||
+      !viewerInstanceRef.current
+    )
+      return;
+
+    // Function to update spinner position based on camera view
+    const updateSpinnerPosition = () => {
+      const viewer = viewerInstanceRef.current;
+      if (!viewer || !viewer.camera || !viewer.renderer) return;
+
+      // Project the 3D position to screen space
+      const worldPos = spinnerPosition.worldPos.clone();
+      const screenPos = worldPos.project(viewer.camera);
+
+      const canvas = viewer.renderer.domElement;
+      const x = ((screenPos.x + 1) / 2) * canvas.clientWidth;
+      const y = ((-screenPos.y + 1) / 2) * canvas.clientHeight;
+
+      // Update the DOM element position directly
+      const spinnerElem = document.getElementById("spinner-container");
+      if (spinnerElem) {
+        spinnerElem.style.left = `${x}px`;
+        spinnerElem.style.top = `${y}px`;
+      }
+    };
+
+    // Call once initially
+    updateSpinnerPosition();
+
+    // Add to the animation loop
+    const animationId = requestAnimationFrame(function animate() {
+      updateSpinnerPosition();
+      requestAnimationFrame(animate);
+    });
+
+    return () => cancelAnimationFrame(animationId);
+  }, [spinnerPosition.visible, spinnerPosition.worldPos]);
+
+  const SpinnerStyles = () => (
+    <style jsx global>{`
+      .sk-chase {
+        width: 40px;
+        height: 40px;
+        position: relative;
+        animation: sk-chase 2.5s infinite linear both;
+      }
+
+      .sk-chase-dot {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        left: 0;
+        top: 0;
+        animation: sk-chase-dot 2s infinite ease-in-out both;
+      }
+
+      .sk-chase-dot:before {
+        content: "";
+        display: block;
+        width: 25%;
+        height: 25%;
+        background-color: #ff8800;
+        border-radius: 100%;
+        animation: sk-chase-dot-before 2s infinite ease-in-out both;
+      }
+
+      .sk-chase-dot:nth-child(1) {
+        animation-delay: -1.1s;
+      }
+      .sk-chase-dot:nth-child(2) {
+        animation-delay: -1s;
+      }
+      .sk-chase-dot:nth-child(3) {
+        animation-delay: -0.9s;
+      }
+      .sk-chase-dot:nth-child(4) {
+        animation-delay: -0.8s;
+      }
+      .sk-chase-dot:nth-child(5) {
+        animation-delay: -0.7s;
+      }
+      .sk-chase-dot:nth-child(6) {
+        animation-delay: -0.6s;
+      }
+      .sk-chase-dot:nth-child(1):before {
+        animation-delay: -1.1s;
+      }
+      .sk-chase-dot:nth-child(2):before {
+        animation-delay: -1s;
+      }
+      .sk-chase-dot:nth-child(3):before {
+        animation-delay: -0.9s;
+      }
+      .sk-chase-dot:nth-child(4):before {
+        animation-delay: -0.8s;
+      }
+      .sk-chase-dot:nth-child(5):before {
+        animation-delay: -0.7s;
+      }
+      .sk-chase-dot:nth-child(6):before {
+        animation-delay: -0.6s;
+      }
+
+      @keyframes sk-chase {
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes sk-chase-dot {
+        80%,
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes sk-chase-dot-before {
+        50% {
+          transform: scale(0.4);
+        }
+        100%,
+        0% {
+          transform: scale(1);
+        }
+      }
+    `}</style>
+  );
 
   if (!isMounted) return null;
 
-  return <div ref={viewerRef} style={{ width: "100%", height: "100vh" }} />;
+  return (
+    <>
+      <SpinnerStyles />
+      <div ref={viewerRef} style={{ width: "100%", height: "100vh" }} />
+      {spinnerPosition.visible && (
+        <div
+          id="spinner-container"
+          style={{
+            position: "absolute",
+            left: "50%", // Initial position - will be updated by effect
+            top: "50%", // Initial position - will be updated by effect
+            transform: "translate(-50%, -50%)",
+            pointerEvents: "none",
+            zIndex: 1000,
+          }}
+        >
+          <div className="sk-chase">
+            <div className="sk-chase-dot"></div>
+            <div className="sk-chase-dot"></div>
+            <div className="sk-chase-dot"></div>
+            <div className="sk-chase-dot"></div>
+            <div className="sk-chase-dot"></div>
+            <div className="sk-chase-dot"></div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
