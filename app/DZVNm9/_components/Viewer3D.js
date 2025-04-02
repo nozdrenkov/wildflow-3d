@@ -7,10 +7,9 @@ import { WorldPositionedSpinner } from "./Spinner";
 // Constants
 const _BOX_SIZE = 5;
 const _HALF_BOX_SIZE = Math.floor(_BOX_SIZE / 2);
-const _DEFAULT_Z_RANGE = {
-  minZ: -4.1188249588012695,
-  maxZ: -3.3649239540100098,
-};
+
+const _DEFAULT_Z = -4.0;
+
 const _POINT_SIZE = 0.03;
 const _POINT_TEXTURE_SIZE = 64;
 const _DEFAULT_CAMERA = {
@@ -31,7 +30,6 @@ export default function Viewer3D({ modelId, onProgress }) {
   const loadedSplatIdsRef = useRef(new Set());
   const currentSelectionRef = useRef(null);
   const metadataRef = useRef(null);
-  const zRangeRef = useRef({ ..._DEFAULT_Z_RANGE });
   const isLoadingRef = useRef(false);
   const [isMounted, setIsMounted] = useState(false);
   const [spinnerPosition, setSpinnerPosition] = useState({
@@ -206,14 +204,12 @@ export default function Viewer3D({ modelId, onProgress }) {
     const boundingPlane = new THREE.Mesh(planeGeometry, planeMaterial);
     const boundingEdges = new THREE.LineSegments(edges, edgesMaterial);
 
-    // Position at minZ (bottom of the range)
-    boundingPlane.position.set(0, 0, zRangeRef.current.minZ);
+    // Position at fixed _DEFAULT_Z
+    boundingPlane.position.set(0, 0, _DEFAULT_Z);
     boundingEdges.position.copy(boundingPlane.position);
 
-    // FIXED: Make the plane horizontal by setting the correct rotation
-    // The plane is created in XY plane by default, so -Math.PI/2 rotation around X makes it vertical
-    // To make it horizontal (parallel to the ground):
-    boundingPlane.rotation.x = 0; // No rotation needed for horizontal plane
+    // Make the plane horizontal
+    boundingPlane.rotation.x = 0;
     boundingEdges.rotation.x = 0;
 
     // Add to scene
@@ -238,26 +234,17 @@ export default function Viewer3D({ modelId, onProgress }) {
     boundingEdges.position.y = y;
   }
 
-  function updateBoundingBoxGeometry(zMin, zMax) {
+  function updateBoundingBoxGeometry() {
     if (!boundingBoxRef.current) return;
 
-    const boundingPlane = boundingBoxRef.current;
-    const boundingEdges = boundingEdgesRef.current;
-
-    // Update z position to be at the minZ height
-    boundingPlane.position.z = zMin;
-    boundingEdges.position.z = zMin;
-
-    // No need to recreate the geometry since the plane size remains constant
-    // We could recreate it if the box size needs to change, but it sounds like
-    // we want to keep it constant at _BOX_SIZE
+    // Position is always at _DEFAULT_Z
+    boundingBoxRef.current.position.z = _DEFAULT_Z;
+    boundingEdgesRef.current.position.z = _DEFAULT_Z;
   }
 
-  function computeZRange(startX, startY) {
+  function checkCellsExist(startX, startY) {
     const metadata = metadataRef.current;
-    if (!metadata) return { ..._DEFAULT_Z_RANGE };
-
-    const cellZValues = [];
+    if (!metadata) return false;
 
     for (let y = 0; y < _BOX_SIZE; y++) {
       for (let x = 0; x < _BOX_SIZE; x++) {
@@ -266,37 +253,43 @@ export default function Viewer3D({ modelId, onProgress }) {
         const cellId = `${cellX}x${cellY}y1s`;
 
         if (metadata[cellId]) {
-          cellZValues.push({
-            minZ: metadata[cellId].minZ,
-            maxZ: metadata[cellId].maxZ,
-          });
+          return true; // Found at least one cell
         }
       }
     }
 
-    if (cellZValues.length === 0) return { ..._DEFAULT_Z_RANGE };
-
-    return {
-      minZ: Math.min(...cellZValues.map((z) => z.minZ)),
-      maxZ: Math.max(...cellZValues.map((z) => z.maxZ)),
-    };
+    return false; // No cells found
   }
 
-  function setupEventHandlers(viewer) {
-    // Handle mouse move
-    viewer.renderer.domElement.addEventListener("mousemove", (event) => {
-      // We need to allow navigation even during loading,
-      // but only block the bounding box updates
-      handleMouseMove(event, viewer);
-    });
+  function getMouseIntersection(event, viewer) {
+    if (!viewer || !viewer.camera) return null;
 
-    // Handle double-click
-    viewer.renderer.domElement.addEventListener("dblclick", (event) => {
-      // Only handle double-click if not already loading
-      if (!isLoadingRef.current) {
-        handleDoubleClick(event, viewer);
-      }
-    });
+    // Calculate mouse position in normalized device coordinates
+    const rect = viewer.renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+
+    // Set up raycaster
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, viewer.camera);
+    const ray = raycaster.ray;
+
+    // Find intersection with horizontal plane at _DEFAULT_Z
+    const planeZ = _DEFAULT_Z;
+    const t = (planeZ - ray.origin.z) / ray.direction.z;
+
+    if (t <= 0) return null; // No intersection
+
+    // Calculate intersection point
+    const point = new THREE.Vector3()
+      .copy(ray.origin)
+      .addScaledVector(ray.direction, t);
+    const gridX = Math.floor(point.x);
+    const gridY = Math.floor(point.y);
+
+    return { point, gridX, gridY };
   }
 
   function handleMouseMove(event, viewer) {
@@ -316,21 +309,8 @@ export default function Viewer3D({ modelId, onProgress }) {
       const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
       const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
 
-      // Calculate Z range for this grid
-      const zRange = computeZRange(startX, startY);
-      const hasData =
-        zRange.minZ !== _DEFAULT_Z_RANGE.minZ ||
-        zRange.maxZ !== _DEFAULT_Z_RANGE.maxZ;
-
-      // Update box geometry if Z range changed
-      if (
-        hasData &&
-        (zRange.minZ !== zRangeRef.current.minZ ||
-          zRange.maxZ !== zRangeRef.current.maxZ)
-      ) {
-        zRangeRef.current = zRange;
-        updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
-      }
+      // Check if there's data available in this grid
+      const hasData = checkCellsExist(startX, startY);
 
       // Update box position
       updateBoundingBox(boxCenterX, boxCenterY);
@@ -369,16 +349,12 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     const { point, gridX, gridY } = intersection;
 
-    // Check if this would be a valid area to load - similar to handleMouseMove logic
-    // Determine start of 5x5 grid containing this point
+    // Check if this would be a valid area to load
     const startX = gridX - _HALF_BOX_SIZE;
     const startY = gridY - _HALF_BOX_SIZE;
 
     // Check if there's data available in this grid
-    const zRange = computeZRange(startX, startY);
-    const hasData =
-      zRange.minZ !== _DEFAULT_Z_RANGE.minZ ||
-      zRange.maxZ !== _DEFAULT_Z_RANGE.maxZ;
+    const hasData = checkCellsExist(startX, startY);
 
     // Check if point is within currently loaded area
     let isInLoadedArea = false;
@@ -396,15 +372,12 @@ export default function Viewer3D({ modelId, onProgress }) {
     }
 
     // Only proceed if we have data and we're outside the loaded area
-    // (this is the same condition that makes blue box visible)
     if (!(hasData && !isInLoadedArea)) {
       return; // Don't do anything if clicking where no blue box would be shown
     }
 
     // Continue with loading process since this is a valid area to load
     onProgress(5, "Processing double-click...");
-
-    // Set loading state to true to prevent box movement
     isLoadingRef.current = true;
 
     // Change bounding box color to orange to indicate loading
@@ -413,55 +386,22 @@ export default function Viewer3D({ modelId, onProgress }) {
       boundingBoxRef.current.visible = true;
       boundingEdgesRef.current.visible = true;
 
-      // Show the CSS spinner (positioned above the plane)
+      // Show the CSS spinner above the plane
       showSpinner({
         x: boundingBoxRef.current.position.x,
         y: boundingBoxRef.current.position.y,
-        z: zRange.minZ, // Position at the minZ (where the plane is)
+        z: _DEFAULT_Z,
       });
     }
 
     loadSplatsForGrid(point.x, point.y).catch((error) => {
       console.error("Error in loadSplatsForGrid:", error);
-      // Reset color back to blue if there's an error
       if (boundingBoxRef.current) {
         boundingBoxRef.current.material.color.set(0x0000ff); // Blue color
       }
-      // Set loading state back to false
       isLoadingRef.current = false;
       onProgress(0, "");
     });
-  }
-
-  function getMouseIntersection(event, viewer) {
-    if (!viewer || !viewer.camera) return null;
-
-    // Calculate mouse position in normalized device coordinates
-    const rect = viewer.renderer.domElement.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1
-    );
-
-    // Set up raycaster
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, viewer.camera);
-    const ray = raycaster.ray;
-
-    // Find intersection with horizontal plane
-    const planeZ = (zRangeRef.current.minZ + zRangeRef.current.maxZ) / 2;
-    const t = (planeZ - ray.origin.z) / ray.direction.z;
-
-    if (t <= 0) return null; // No intersection
-
-    // Calculate intersection point
-    const point = new THREE.Vector3()
-      .copy(ray.origin)
-      .addScaledVector(ray.direction, t);
-    const gridX = Math.floor(point.x);
-    const gridY = Math.floor(point.y);
-
-    return { point, gridX, gridY };
   }
 
   function showSpinner(position) {
@@ -473,7 +413,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       worldPos: new THREE.Vector3(
         position.x,
         position.y,
-        position.z + 0.1 // Just slightly above the plane
+        _DEFAULT_Z + 0.1 // Just slightly above the plane
       ),
     });
   }
@@ -500,21 +440,18 @@ export default function Viewer3D({ modelId, onProgress }) {
       const startX = Math.floor(centerX) - _HALF_BOX_SIZE;
       const startY = Math.floor(centerY) - _HALF_BOX_SIZE;
 
-      // Compute Z range for this grid
-      const zRange = computeZRange(startX, startY);
-      zRangeRef.current = zRange;
-
-      // Update box position for current load area
+      // Update box position
       const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
       const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
       updateBoundingBox(boxCenterX, boxCenterY);
-      updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
+
+      // Don't need to update geometry anymore since Z is fixed
 
       // Show spinner at square position
       showSpinner({
         x: boxCenterX,
         y: boxCenterY,
-        z: zRange.minZ, // Position at the minZ (where the plane is)
+        z: _DEFAULT_Z,
       });
 
       // Force a render to ensure the orange box is visible
@@ -557,7 +494,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       await addSplatsToScene(viewer, splatBuffers, splatConfigs);
 
       // 4. Update bounding box
-      updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
+      updateBoundingBoxGeometry();
 
       // 5. Show completion
       onProgress(100, "Loading complete");
@@ -784,27 +721,15 @@ export default function Viewer3D({ modelId, onProgress }) {
         const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
         const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
 
-        // Calculate Z range for this grid
-        const zRange = computeZRange(startX, startY);
-        zRangeRef.current = zRange;
-
-        // Update bounding box geometry with the proper z-range
-        updateBoundingBoxGeometry(zRange.minZ, zRange.maxZ);
-
-        // Update box position and make it visible with orange color
         updateBoundingBox(boxCenterX, boxCenterY);
-        if (boundingBoxRef.current) {
-          boundingBoxRef.current.material.color.set(0xff8800); // Orange color
-          boundingBoxRef.current.visible = true;
-          boundingEdgesRef.current.visible = true;
+        // No need to update geometry, Z is fixed
 
-          // Show spinner
-          showSpinner({
-            x: boxCenterX,
-            y: boxCenterY,
-            z: zRange.minZ, // Position at the minZ (where the plane is)
-          });
-        }
+        // Show spinner
+        showSpinner({
+          x: boxCenterX,
+          y: boxCenterY,
+          z: _DEFAULT_Z,
+        });
 
         // IMPORTANT: Force a render to make the point cloud visible immediately
         viewer.forceRender();
@@ -849,7 +774,7 @@ export default function Viewer3D({ modelId, onProgress }) {
           showSpinner({
             x: boxCenterX,
             y: boxCenterY,
-            z: zRange.minZ, // Position at the minZ (where the plane is)
+            z: _DEFAULT_Z,
           });
         }
 
@@ -934,6 +859,23 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     // Hide spinner when cleaning up
     hideSpinner();
+  }
+
+  function setupEventHandlers(viewer) {
+    // Handle mouse move
+    viewer.renderer.domElement.addEventListener("mousemove", (event) => {
+      // We need to allow navigation even during loading,
+      // but only block the bounding box updates
+      handleMouseMove(event, viewer);
+    });
+
+    // Handle double-click
+    viewer.renderer.domElement.addEventListener("dblclick", (event) => {
+      // Only handle double-click if not already loading
+      if (!isLoadingRef.current) {
+        handleDoubleClick(event, viewer);
+      }
+    });
   }
 
   if (!isMounted) return null;
