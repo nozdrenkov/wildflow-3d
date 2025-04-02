@@ -31,6 +31,7 @@ export default function Viewer3D({ modelId, onProgress }) {
   const currentSelectionRef = useRef(null);
   const metadataRef = useRef(null);
   const zRangeRef = useRef({ ..._DEFAULT_Z_RANGE });
+  const isLoadingRef = useRef(false);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -140,7 +141,7 @@ export default function Viewer3D({ modelId, onProgress }) {
     const edges = new THREE.EdgesGeometry(geometry);
 
     const boxMaterial = new THREE.MeshBasicMaterial({
-      color: 0x0000ff,
+      color: 0x0000ff, // Initial blue color
       transparent: true,
       opacity: 0.3,
       side: THREE.DoubleSide,
@@ -240,7 +241,10 @@ export default function Viewer3D({ modelId, onProgress }) {
   function setupEventHandlers(viewer) {
     // Handle mouse move
     viewer.renderer.domElement.addEventListener("mousemove", (event) => {
-      handleMouseMove(event, viewer);
+      // Only process mouse move when not loading
+      if (!isLoadingRef.current) {
+        handleMouseMove(event, viewer);
+      }
     });
 
     // Handle double-click
@@ -323,8 +327,24 @@ export default function Viewer3D({ modelId, onProgress }) {
       `Double-click intersection at: ${point.x}, ${point.y}, ${point.z}`
     );
 
+    // Set loading state to true to prevent box movement
+    isLoadingRef.current = true;
+
+    // Change bounding box color to orange to indicate loading
+    if (boundingBoxRef.current) {
+      boundingBoxRef.current.material.color.set(0xff8800); // Orange color
+      boundingBoxRef.current.visible = true;
+      boundingEdgesRef.current.visible = true;
+    }
+
     loadSplatsForGrid(point.x, point.y).catch((error) => {
       console.error("Error in loadSplatsForGrid:", error);
+      // Reset color back to blue if there's an error
+      if (boundingBoxRef.current) {
+        boundingBoxRef.current.material.color.set(0x0000ff); // Blue color
+      }
+      // Set loading state back to false
+      isLoadingRef.current = false;
       onProgress(0, "");
     });
   }
@@ -419,6 +439,9 @@ export default function Viewer3D({ modelId, onProgress }) {
       console.error("Error loading splats:", error);
       onProgress(100, "Error loading splats");
       setTimeout(() => onProgress(0, ""), 2000);
+
+      // Make sure to reset loading state even if error occurs
+      isLoadingRef.current = false;
     }
   }
 
@@ -558,8 +581,25 @@ export default function Viewer3D({ modelId, onProgress }) {
       }
 
       console.log("All splats added to scene");
+
+      // Hide the bounding box after splats are loaded
+      if (boundingBoxRef.current) {
+        boundingBoxRef.current.visible = false;
+        boundingEdgesRef.current.visible = false;
+        // Reset color back to blue for next use
+        boundingBoxRef.current.material.color.set(0x0000ff);
+      }
+
+      // Reset loading state to allow mouse movement to affect box again
+      isLoadingRef.current = false;
     } catch (error) {
       console.error("Error adding splats to scene:", error);
+      // Reset color back to blue if there's an error
+      if (boundingBoxRef.current) {
+        boundingBoxRef.current.material.color.set(0x0000ff); // Blue color
+      }
+      // Make sure to reset loading state
+      isLoadingRef.current = false;
       throw error;
     }
   }
