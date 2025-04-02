@@ -104,7 +104,7 @@ export default function Viewer3D({ modelId, onProgress }) {
         dampingFactor: 0.05,
       },
       progressCallback: (percent, message) => {
-        console.log(`Loading progress: ${percent}% - ${message}`);
+        // console.log(`Loading progress: ${percent}% - ${message}`);
         onProgress(percent, message);
       },
     });
@@ -360,7 +360,7 @@ export default function Viewer3D({ modelId, onProgress }) {
   }
 
   function handleDoubleClick(event, viewer) {
-    console.log("Double-click detected");
+    // console.log("Double-click detected");
 
     // Show progress immediately
     onProgress(5, "Processing double-click...");
@@ -373,9 +373,9 @@ export default function Viewer3D({ modelId, onProgress }) {
     }
 
     const { point } = intersection;
-    console.log(
-      `Double-click intersection at: ${point.x}, ${point.y}, ${point.z}`
-    );
+    // console.log(
+    //   `Double-click intersection at: ${point.x}, ${point.y}, ${point.z}`
+    // );
 
     // Set loading state to true to prevent box movement
     isLoadingRef.current = true;
@@ -442,7 +442,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       }
 
       onProgress(5, "Preparing to load splats...");
-      console.log(`Loading splats for grid centered at ${centerX},${centerY}`);
+      // console.log(`Loading splats for grid centered at ${centerX},${centerY}`);
 
       // Calculate top-left corner of the grid
       const startX = Math.floor(centerX) - _HALF_BOX_SIZE;
@@ -565,42 +565,26 @@ export default function Viewer3D({ modelId, onProgress }) {
       await Promise.all(
         batch.map(async (cellId) => {
           const filePath = `${_SPLAT_FOLDER}/${cellId}.ply`;
-          console.log(`Downloading: ${filePath}`);
 
           try {
-            if (typeof viewer.downloadSplatSceneToSplatBuffer === "function") {
-              const buffer = await viewer.downloadSplatSceneToSplatBuffer(
-                filePath,
-                5, // splatAlphaRemovalThreshold
-                undefined,
-                false, // showLoadingUI
-                undefined,
-                GaussianSplats3D.SceneFormat.Ply
-              );
+            const buffer = await viewer.downloadSplatSceneToSplatBuffer(
+              filePath,
+              5, // splatAlphaRemovalThreshold
+              undefined,
+              false, // showLoadingUI
+              undefined,
+              GaussianSplats3D.SceneFormat.Ply
+            );
 
-              if (buffer) {
-                splatBuffers.push(buffer);
-                splatConfigs.push({
-                  position: [0, 0, 0],
-                  rotation: [0, 0, 0, 1],
-                  scale: [1, 1, 1],
-                  splatAlphaRemovalThreshold: 5,
-                });
-                loadedSplatIdsRef.current.add(cellId);
-              }
-            } else {
-              // Fallback for older API
-              splatBuffers.push(null);
+            if (buffer) {
+              splatBuffers.push(buffer);
               splatConfigs.push({
-                path: filePath,
                 position: [0, 0, 0],
                 rotation: [0, 0, 0, 1],
                 scale: [1, 1, 1],
                 splatAlphaRemovalThreshold: 5,
-                showLoadingUI: false,
-                format: GaussianSplats3D.SceneFormat.Ply,
-                progressiveLoad: false,
               });
+              loadedSplatIdsRef.current.add(cellId);
             }
           } catch (error) {
             console.error(`Error downloading cell ${cellId}:`, error);
@@ -645,7 +629,7 @@ export default function Viewer3D({ modelId, onProgress }) {
         const validBuffers = splatBuffers.filter((b) => b !== null);
         const validConfigs = splatConfigs.slice(0, validBuffers.length);
 
-        console.log(`Adding ${validBuffers.length} splat buffers to scene`);
+        // console.log(`Adding ${validBuffers.length} splat buffers to scene`);
         onProgress(95, "Adding splats to scene...");
 
         await viewer.addSplatBuffers(
@@ -677,7 +661,7 @@ export default function Viewer3D({ modelId, onProgress }) {
         viewer.setRenderMode(originalRenderMode);
       }
 
-      console.log("All splats added to scene");
+      // console.log("All splats added to scene");
 
       // Hide the bounding box after splats are loaded
       if (boundingBoxRef.current) {
@@ -714,7 +698,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       _POINT_CLOUD_PATH,
       // Success callback
       (geometry) => {
-        console.log("Point cloud loaded successfully");
+        // console.log("Point cloud loaded successfully");
         const material = new THREE.PointsMaterial({
           size: _POINT_SIZE,
           vertexColors: true,
@@ -767,7 +751,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       // Progress callback
       (xhr) => {
         const percentComplete = (xhr.loaded / xhr.total) * 100;
-        console.log(`Point cloud loading: ${Math.round(percentComplete)}%`);
+        // console.log(`Point cloud loading: ${Math.round(percentComplete)}%`);
         onProgress(Math.round(percentComplete * 0.3), "Loading point cloud...");
       },
       // Error callback
