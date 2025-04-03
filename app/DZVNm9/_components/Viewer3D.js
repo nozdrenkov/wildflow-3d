@@ -4,10 +4,15 @@ import * as THREE from "three";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 import { WorldPositionedSpinner } from "./Spinner";
 
-// Constants
-const _BOX_SIZE = 5;
-const _HALF_BOX_SIZE = Math.floor(_BOX_SIZE / 2);
+const _BLUE = 0x0000ff;
+const _ORANGE = 0xff8800;
 
+const _SCENE_BOUNDS = {
+  minX: -15.0,
+  maxX: -1.0,
+  minY: -13.0,
+  maxY: 9.0,
+};
 const _DEFAULT_Z = -4.0;
 
 const _POINT_SIZE = 0.03;
@@ -23,12 +28,54 @@ const _POINT_CLOUD_PATH = `${_MODEL_PATH}/point_cloud.ply`;
 const _SPLAT_FOLDER = `${_MODEL_PATH}/1s`;
 
 export default function Viewer3D({ modelId, onProgress }) {
+  const _SELECTION_BOX_SIZE = {
+    xSize: 3,
+    ySize: 4,
+  };
+
+  const valueBetween = (x, minX, maxX, margin) => {
+    let mnX = minX + margin;
+    let mxX = maxX - margin;
+    if (mnX > mxX) {
+      throw new Error(
+        "minX is greater than maxX. " +
+          "Selection box can't be bigger than the whole field."
+      );
+    }
+    if (x < mnX) return mnX;
+    if (x > mxX) return mxX;
+    return x;
+  };
+
+  const selectionBoxCenter = (x, y) => {
+    const cellX = Math.floor(x);
+    const cellY = Math.floor(y);
+    return {
+      x: valueBetween(
+        cellX + (_SELECTION_BOX_SIZE.xSize % 2) / 2,
+        _SCENE_BOUNDS.minX,
+        _SCENE_BOUNDS.maxX,
+        _SELECTION_BOX_SIZE.xSize / 2
+      ),
+      y: valueBetween(
+        cellY + (_SELECTION_BOX_SIZE.ySize % 2) / 2,
+        _SCENE_BOUNDS.minY,
+        _SCENE_BOUNDS.maxY,
+        _SELECTION_BOX_SIZE.ySize / 2
+      ),
+    };
+  };
+
+  const _INIT_BOX = selectionBoxCenter(
+    _DEFAULT_CAMERA.lookAt[0],
+    _DEFAULT_CAMERA.lookAt[1]
+  );
+
   const viewerRef = useRef(null);
   const viewerInstanceRef = useRef(null);
-  const boundingBoxRef = useRef(null);
-  const boundingEdgesRef = useRef(null);
+  const selectionBoxRef = useRef(null);
+  const currentSelectionBoxRef = useRef(null);
   const loadedSplatIdsRef = useRef(new Set());
-  const currentSelectionRef = useRef(null);
   const metadataRef = useRef(null);
   const isLoadingRef = useRef(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -51,7 +98,8 @@ export default function Viewer3D({ modelId, onProgress }) {
       // Load metadata
       try {
         const response = await fetch(_METADATA_PATH);
-        metadataRef.current = await response.json();
+        const metadata = await response.json();
+        metadataRef.current = metadata;
         console.log(
           "Loaded metadata for",
           Object.keys(metadataRef.current).length,
@@ -66,7 +114,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       viewerInstanceRef.current = viewer;
 
       // Create bounding box
-      createBoundingBox(threeScene);
+      createSelectionBox(threeScene);
 
       // Set up event handlers
       setupEventHandlers(viewer);
@@ -175,17 +223,13 @@ export default function Viewer3D({ modelId, onProgress }) {
     return texture;
   }
 
-  function createBoundingBox(threeScene) {
-    // Remove previous plane if exists
-    if (boundingBoxRef.current && boundingBoxRef.current.parent) {
-      threeScene.remove(boundingBoxRef.current);
+  function createSelectionBox(threeScene) {
+    if (selectionBoxRef.current && selectionBoxRef.current.parent) {
+      threeScene.remove(selectionBoxRef.current);
     }
 
-    // Create a plane geometry instead of a box
-    const planeGeometry = new THREE.PlaneGeometry(_BOX_SIZE, _BOX_SIZE);
-
     const planeMaterial = new THREE.MeshBasicMaterial({
-      color: 0x0000ff, // Default blue color
+      color: _ORANGE,
       transparent: true,
       opacity: 0.3,
       side: THREE.DoubleSide,
@@ -194,57 +238,16 @@ export default function Viewer3D({ modelId, onProgress }) {
       visible: true,
     });
 
-    const boundingPlane = new THREE.Mesh(planeGeometry, planeMaterial);
-
-    // Position at fixed _DEFAULT_Z
-    boundingPlane.position.set(0, 0, _DEFAULT_Z);
-
-    // Make the plane horizontal
-    boundingPlane.rotation.x = 0;
-
-    // Add to scene
-    threeScene.add(boundingPlane);
-
-    // Store references
-    boundingBoxRef.current = boundingPlane;
-    // Don't create or reference edges at all
-    boundingEdgesRef.current = null;
-  }
-
-  function updateBoundingBox(x, y) {
-    if (!boundingBoxRef.current) return;
-
-    const boundingPlane = boundingBoxRef.current;
-
-    // Update position
-    boundingPlane.position.x = x;
-    boundingPlane.position.y = y;
-  }
-
-  function updateBoundingBoxGeometry() {
-    if (!boundingBoxRef.current) return;
-
-    // Position is always at _DEFAULT_Z
-    boundingBoxRef.current.position.z = _DEFAULT_Z;
-  }
-
-  function checkCellsExist(startX, startY) {
-    const metadata = metadataRef.current;
-    if (!metadata) return false;
-
-    for (let y = 0; y < _BOX_SIZE; y++) {
-      for (let x = 0; x < _BOX_SIZE; x++) {
-        const cellX = startX + x;
-        const cellY = startY + y;
-        const cellId = `${cellX}x${cellY}y1s`;
-
-        if (metadata[cellId]) {
-          return true; // Found at least one cell
-        }
-      }
-    }
-
-    return false; // No cells found
+    const planeGeometry = new THREE.PlaneGeometry(
+      _SELECTION_BOX_SIZE.xSize,
+      _SELECTION_BOX_SIZE.ySize
+    );
+    const selectionBox = new THREE.Mesh(planeGeometry, planeMaterial);
+    selectionBox.position.set(_INIT_BOX.x, _INIT_BOX.y, _DEFAULT_Z);
+    selectionBox.rotation.x = 0;
+    threeScene.add(selectionBox);
+    selectionBoxRef.current = selectionBox;
+    currentSelectionBoxRef.current = _INIT_BOX;
   }
 
   function getMouseIntersection(event, viewer) {
@@ -272,53 +275,35 @@ export default function Viewer3D({ modelId, onProgress }) {
     const point = new THREE.Vector3()
       .copy(ray.origin)
       .addScaledVector(ray.direction, t);
-    const gridX = Math.floor(point.x);
-    const gridY = Math.floor(point.y);
-
-    return { point, gridX, gridY };
+    return { x: point.x, y: point.y };
   }
 
+  const isPointInBox = (x, y, boxX, boxY) => {
+    const halfBoxSizeX = _SELECTION_BOX_SIZE.xSize / 2;
+    const halfBoxSizeY = _SELECTION_BOX_SIZE.ySize / 2;
+    return (
+      x >= boxX - halfBoxSizeX &&
+      x <= boxX + halfBoxSizeX &&
+      y >= boxY - halfBoxSizeY &&
+      y <= boxY + halfBoxSizeY
+    );
+  };
+
   function handleMouseMove(event, viewer) {
-    // Get mouse position and intersection
     const intersection = getMouseIntersection(event, viewer);
     if (!intersection) return;
-
-    const { point, gridX, gridY } = intersection;
+    const { x, y } = intersection;
 
     // Only update and show the bounding box if we're not in loading state
     if (!isLoadingRef.current) {
-      // Determine start of 5x5 grid containing this point
-      const startX = gridX - _HALF_BOX_SIZE;
-      const startY = gridY - _HALF_BOX_SIZE;
-
-      // Calculate box center
-      const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
-      const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
-
-      // Check if there's data available in this grid
-      const hasData = checkCellsExist(startX, startY);
-
-      // Update box position
-      updateBoundingBox(boxCenterX, boxCenterY);
-
-      // Check if point is within currently loaded area
-      let isInLoadedArea = false;
-      if (currentSelectionRef.current) {
-        const {
-          startX: loadedStartX,
-          startY: loadedStartY,
-          boxSize,
-        } = currentSelectionRef.current;
-        isInLoadedArea =
-          gridX >= loadedStartX &&
-          gridX < loadedStartX + boxSize &&
-          gridY >= loadedStartY &&
-          gridY < loadedStartY + boxSize;
-      }
-
-      // Only show the box if we have data and we're outside the loaded area
-      if (boundingBoxRef.current) {
-        boundingBoxRef.current.visible = hasData && !isInLoadedArea;
+      const boxCenter = selectionBoxCenter(x, y);
+      selectionBoxRef.current.position.x = boxCenter.x;
+      selectionBoxRef.current.position.y = boxCenter.y;
+      const loadedBox = currentSelectionBoxRef.current;
+      const isInLoadedBox =
+        loadedBox && isPointInBox(x, y, loadedBox.x, loadedBox.y);
+      if (selectionBoxRef.current) {
+        selectionBoxRef.current.visible = !isInLoadedBox;
       }
     }
     // We're not returning here, so the event continues to propagate
@@ -326,63 +311,30 @@ export default function Viewer3D({ modelId, onProgress }) {
   }
 
   function handleDoubleClick(event, viewer) {
-    // Get mouse position and intersection
     const intersection = getMouseIntersection(event, viewer);
-    if (!intersection) {
-      return;
-    }
+    if (!intersection) return;
+    const { x, y } = intersection;
 
-    const { point, gridX, gridY } = intersection;
+    // If we loading splats, don't do anything
+    if (isLoadingRef.current) return;
 
-    // Check if this would be a valid area to load
-    const startX = gridX - _HALF_BOX_SIZE;
-    const startY = gridY - _HALF_BOX_SIZE;
+    // Don't do anything if the cursor inside splat area
+    const loadedBox = currentSelectionBoxRef.current;
+    const isInLoadedBox =
+      loadedBox && isPointInBox(x, y, loadedBox.x, loadedBox.y);
+    if (isInLoadedBox) return;
 
-    // Check if there's data available in this grid
-    const hasData = checkCellsExist(startX, startY);
-
-    // Check if point is within currently loaded area
-    let isInLoadedArea = false;
-    if (currentSelectionRef.current) {
-      const {
-        startX: loadedStartX,
-        startY: loadedStartY,
-        boxSize,
-      } = currentSelectionRef.current;
-      isInLoadedArea =
-        gridX >= loadedStartX &&
-        gridX < loadedStartX + boxSize &&
-        gridY >= loadedStartY &&
-        gridY < loadedStartY + boxSize;
-    }
-
-    // Only proceed if we have data and we're outside the loaded area
-    if (!(hasData && !isInLoadedArea)) {
-      return; // Don't do anything if clicking where no blue box would be shown
-    }
-
-    // Continue with loading process since this is a valid area to load
     onProgress(5, "Processing double-click...");
     isLoadingRef.current = true;
 
-    // Change bounding box color to orange to indicate loading
-    if (boundingBoxRef.current) {
-      boundingBoxRef.current.material.color.set(0xff8800); // Set to orange for loading
-      boundingBoxRef.current.visible = true;
+    const boxCenter = selectionBoxCenter(x, y);
+    selectionBoxRef.current.position.x = boxCenter.x;
+    selectionBoxRef.current.position.y = boxCenter.y;
+    currentSelectionBoxRef.current = boxCenter;
 
-      // Show the CSS spinner above the plane
-      showSpinner({
-        x: boundingBoxRef.current.position.x,
-        y: boundingBoxRef.current.position.y,
-        z: _DEFAULT_Z,
-      });
-    }
-
-    loadSplatsForGrid(point.x, point.y).catch((error) => {
+    loadSplatsForGrid().catch((error) => {
       console.error("Error in loadSplatsForGrid:", error);
-      if (boundingBoxRef.current) {
-        boundingBoxRef.current.material.color.set(0x0000ff); // Reset to blue on error
-      }
+      selectionBoxRef.current.material.color.set(_BLUE); // Reset to blue on error
       isLoadingRef.current = false;
       onProgress(0, "");
     });
@@ -406,94 +358,74 @@ export default function Viewer3D({ modelId, onProgress }) {
     setSpinnerPosition((prev) => ({ ...prev, visible: false }));
   }
 
-  async function loadSplatsForGrid(centerX, centerY) {
-    try {
-      // Make sure loading state is true
-      isLoadingRef.current = true;
+  const getRange = (centerCoord, length) => {
+    const start = Math.floor(centerCoord) - Math.floor(length / 2);
+    const end = start + length;
+    return [start, end];
+  };
 
-      // Ensure controls remain enabled during loading
+  const boxToCellIds = (boxCenterX, boxCenterY) => {
+    const [startX, endX] = getRange(boxCenterX, _SELECTION_BOX_SIZE.xSize);
+    const [startY, endY] = getRange(boxCenterY, _SELECTION_BOX_SIZE.ySize);
+    const cellsToLoad = [];
+    for (let y = startY; y < endY; y++) {
+      for (let x = startX; x < endX; x++) {
+        cellsToLoad.push(`${x}x${y}y1s`);
+      }
+    }
+    return cellsToLoad;
+  };
+
+  async function loadSplatsForGrid() {
+    try {
+      isLoadingRef.current = true;
+      onProgress(35, "Preparing to load splats...");
+
+      selectionBoxRef.current.material.color.set(_ORANGE); // Set to orange for loading
+      selectionBoxRef.current.visible = true;
+      showSpinner({
+        x: currentSelectionBoxRef.current.x,
+        y: currentSelectionBoxRef.current.y,
+        z: _DEFAULT_Z,
+      });
+
+      const cellsToLoad = boxToCellIds(
+        currentSelectionBoxRef.current.x,
+        currentSelectionBoxRef.current.y
+      );
+
       const viewer = viewerInstanceRef.current;
       if (viewer && viewer.controls) {
         viewer.controls.enabled = true;
       }
-
-      onProgress(5, "Preparing to load splats...");
-      // console.log(`Loading splats for grid centered at ${centerX},${centerY}`);
-
-      // Calculate top-left corner of the grid
-      const startX = Math.floor(centerX) - _HALF_BOX_SIZE;
-      const startY = Math.floor(centerY) - _HALF_BOX_SIZE;
-
-      // Update box position
-      const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
-      const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
-      updateBoundingBox(boxCenterX, boxCenterY);
-
-      // Don't need to update geometry anymore since Z is fixed
-
-      // Show spinner at square position
-      showSpinner({
-        x: boxCenterX,
-        y: boxCenterY,
-        z: _DEFAULT_Z,
-      });
-
-      // Force a render to ensure the orange box is visible
       if (viewer && viewer.forceRender) {
         viewer.forceRender();
       }
 
-      // Generate cell IDs for the grid
-      const cellsToLoad = [];
-      for (let y = 0; y < _BOX_SIZE; y++) {
-        for (let x = 0; x < _BOX_SIZE; x++) {
-          const cellX = startX + x;
-          const cellY = startY + y;
-          const cellId = `${cellX}x${cellY}y1s`;
-          cellsToLoad.push(cellId);
-        }
-      }
-
-      // Store current selection
-      currentSelectionRef.current = {
-        startX,
-        startY,
-        boxSize: _BOX_SIZE,
-        cellIds: cellsToLoad,
-      };
-
-      // 1. Clear existing content
-      onProgress(10, "Clearing previous splats...");
+      onProgress(40, "Clearing previous splats...");
       await clearExistingSplats(viewer);
 
-      // 2. Download splat files
-      onProgress(20, "Downloading splat files...");
+      onProgress(50, "Downloading splat files...");
       const { splatBuffers, splatConfigs } = await downloadSplatFiles(
         viewer,
         cellsToLoad
       );
 
-      // 3. Add splats to scene
       onProgress(90, "Preparing to display splats...");
       await addSplatsToScene(viewer, splatBuffers, splatConfigs);
 
-      // 4. Update bounding box
-      updateBoundingBoxGeometry();
-
-      // 5. Show completion
       onProgress(100, "Loading complete");
       hideSpinner();
+      selectionBoxRef.current.material.color.set(_BLUE);
+
       setTimeout(() => onProgress(0, ""), 1500);
     } catch (error) {
       console.error("Error loading splats:", error);
       onProgress(100, "Error loading splats");
       setTimeout(() => onProgress(0, ""), 2000);
 
-      // Make sure to reset loading state even if error occurs
-      isLoadingRef.current = false;
-
-      // Hide spinner on error
       hideSpinner();
+      isLoadingRef.current = false;
     }
   }
 
@@ -570,7 +502,7 @@ export default function Viewer3D({ modelId, onProgress }) {
           // Update progress for this file
           filesLoaded++;
           onProgress(
-            20 + Math.round((filesLoaded / totalFiles) * 70),
+            50 + Math.round((filesLoaded / totalFiles) * 50),
             `Downloaded ${filesLoaded}/${totalFiles} files`
           );
         })
@@ -641,10 +573,10 @@ export default function Viewer3D({ modelId, onProgress }) {
       // console.log("All splats added to scene");
 
       // Hide the bounding box after splats are loaded
-      if (boundingBoxRef.current) {
-        boundingBoxRef.current.visible = false;
+      if (selectionBoxRef.current) {
+        selectionBoxRef.current.visible = false;
         // Reset color back to blue for next use
-        boundingBoxRef.current.material.color.set(0x0000ff);
+        selectionBoxRef.current.material.color.set(_BLUE);
       }
 
       // Hide the spinner
@@ -655,8 +587,8 @@ export default function Viewer3D({ modelId, onProgress }) {
     } catch (error) {
       console.error("Error adding splats to scene:", error);
       // Reset color back to blue if there's an error
-      if (boundingBoxRef.current) {
-        boundingBoxRef.current.material.color.set(0x0000ff);
+      if (selectionBoxRef.current) {
+        selectionBoxRef.current.material.color.set(_BLUE);
       }
       // Make sure to reset loading state
       isLoadingRef.current = false;
@@ -671,17 +603,13 @@ export default function Viewer3D({ modelId, onProgress }) {
   function loadPointCloud(threeScene, viewer) {
     const loader = new PLYLoader();
 
-    // Set the loading state to true initially
     isLoadingRef.current = true;
 
-    // Show progress immediately
     onProgress(5, "Loading point cloud...");
 
     loader.load(
       _POINT_CLOUD_PATH,
-      // Success callback
       (geometry) => {
-        // console.log("Point cloud loaded successfully");
         const material = new THREE.PointsMaterial({
           size: _POINT_SIZE,
           vertexColors: true,
@@ -694,83 +622,20 @@ export default function Viewer3D({ modelId, onProgress }) {
         const pointCloud = new THREE.Points(geometry, material);
         threeScene.add(pointCloud);
 
-        // Get initial position and set orange bounding box
-        const initialX = Math.floor(_DEFAULT_CAMERA.lookAt[0]);
-        const initialY = Math.floor(_DEFAULT_CAMERA.lookAt[1]);
-
-        // Calculate grid and update bounding box
-        const startX = initialX - _HALF_BOX_SIZE;
-        const startY = initialY - _HALF_BOX_SIZE;
-        const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
-        const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
-
-        updateBoundingBox(boxCenterX, boxCenterY);
-
-        // Set the first load to orange
-        if (boundingBoxRef.current) {
-          boundingBoxRef.current.material.color.set(0xff8800); // Orange color
-          boundingBoxRef.current.visible = true;
-        }
-
-        // Show spinner
-        showSpinner({
-          x: boxCenterX,
-          y: boxCenterY,
-          z: _DEFAULT_Z,
-        });
-
-        // IMPORTANT: Force a render to make the point cloud visible immediately
         viewer.forceRender();
 
-        // A slight delay to ensure the point cloud is visible before starting splat loading
         setTimeout(() => {
-          // Show point cloud and prepare to load splats
           onProgress(35, "Point cloud loaded, loading splats...");
-
-          // Now load the initial splats (the orange box will stay visible until splats are loaded)
-          loadSplatsForGrid(initialX, initialY);
+          loadSplatsForGrid();
         }, 500); // Small delay to ensure the point cloud renders
       },
-      // Progress callback
       (xhr) => {
         const percentComplete = (xhr.loaded / xhr.total) * 100;
-        // console.log(`Point cloud loading: ${Math.round(percentComplete)}%`);
         onProgress(Math.round(percentComplete * 0.3), "Loading point cloud...");
       },
-      // Error callback
       (error) => {
         console.error("Error loading point cloud:", error);
-        onProgress(30, "Point cloud failed, loading splats...");
-
-        // Even if point cloud fails, try to load splats with default coordinates
-        const initialX = Math.floor(_DEFAULT_CAMERA.lookAt[0]);
-        const initialY = Math.floor(_DEFAULT_CAMERA.lookAt[1]);
-
-        // Set orange bounding box
-        const startX = initialX - _HALF_BOX_SIZE;
-        const startY = initialY - _HALF_BOX_SIZE;
-        const boxCenterX = startX + _HALF_BOX_SIZE + 0.5;
-        const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
-
-        updateBoundingBox(boxCenterX, boxCenterY);
-        if (boundingBoxRef.current) {
-          boundingBoxRef.current.material.color.set(0xff8800); // Orange color
-          boundingBoxRef.current.visible = true;
-        }
-
-        // Show spinner
-        showSpinner({
-          x: boxCenterX,
-          y: boxCenterY,
-          z: _DEFAULT_Z,
-        });
-
-        // IMPORTANT: Force a render to make the box visible immediately
-        viewer.forceRender();
-
-        setTimeout(() => {
-          loadSplatsForGrid(initialX, initialY);
-        }, 300);
+        onProgress(30, "Point cloud failed...");
       }
     );
   }
@@ -837,9 +702,7 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     // Clear refs
     viewerInstanceRef.current = null;
-    boundingBoxRef.current = null;
-    // We still need to null this out even though we don't use it
-    boundingEdgesRef.current = null;
+    selectionBoxRef.current = null;
     loadedSplatIdsRef.current.clear();
 
     // Force garbage collection if available
