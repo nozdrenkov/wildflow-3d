@@ -28,10 +28,10 @@ const _POINT_CLOUD_PATH = `${_MODEL_PATH}/point_cloud.ply`;
 const _SPLAT_FOLDER = `${_MODEL_PATH}/1s`;
 
 export default function Viewer3D({ modelId, onProgress }) {
-  const _SELECTION_BOX_SIZE = {
-    xSize: 3,
-    ySize: 4,
-  };
+  const [selectionBoxSize, setSelectionBoxSize] = useState({
+    xSize: 5,
+    ySize: 5,
+  });
 
   const valueBetween = (x, minX, maxX, margin) => {
     let mnX = minX + margin;
@@ -52,16 +52,16 @@ export default function Viewer3D({ modelId, onProgress }) {
     const cellY = Math.floor(y);
     return {
       x: valueBetween(
-        cellX + (_SELECTION_BOX_SIZE.xSize % 2) / 2,
+        cellX + (selectionBoxSize.xSize % 2) / 2,
         _SCENE_BOUNDS.minX,
         _SCENE_BOUNDS.maxX,
-        _SELECTION_BOX_SIZE.xSize / 2
+        selectionBoxSize.xSize / 2
       ),
       y: valueBetween(
-        cellY + (_SELECTION_BOX_SIZE.ySize % 2) / 2,
+        cellY + (selectionBoxSize.ySize % 2) / 2,
         _SCENE_BOUNDS.minY,
         _SCENE_BOUNDS.maxY,
-        _SELECTION_BOX_SIZE.ySize / 2
+        selectionBoxSize.ySize / 2
       ),
     };
   };
@@ -85,7 +85,63 @@ export default function Viewer3D({ modelId, onProgress }) {
   });
 
   useEffect(() => {
+    const updateSelectionBoxFromURL = () => {
+      let sizeFound = false;
+
+      // Client-side parsing of the URL for the @NxN pattern
+      const pathname = window.location.pathname;
+      const atMatch = pathname.match(/@(\d+)x(\d+)$/);
+
+      if (atMatch) {
+        const xSize = parseInt(atMatch[1], 10);
+        const ySize = parseInt(atMatch[2], 10);
+
+        // Validate size
+        const validXSize = Math.max(1, Math.min(xSize, 10));
+        const validYSize = Math.max(1, Math.min(ySize, 10));
+
+        setSelectionBoxSize({
+          xSize: validXSize,
+          ySize: validYSize,
+        });
+        sizeFound = true;
+      }
+
+      // If the @ pattern wasn't found, check query params
+      if (!sizeFound) {
+        const params = new URLSearchParams(window.location.search);
+        const sizeParam = params.get("size");
+
+        if (sizeParam) {
+          const sizeMatch = sizeParam.match(/^(\d+)x(\d+)$/);
+          if (sizeMatch) {
+            const xSize = parseInt(sizeMatch[1], 10);
+            const ySize = parseInt(sizeMatch[2], 10);
+
+            // Validate size
+            const validXSize = Math.max(1, Math.min(xSize, 10));
+            const validYSize = Math.max(1, Math.min(ySize, 10));
+
+            setSelectionBoxSize({
+              xSize: validXSize,
+              ySize: validYSize,
+            });
+          }
+        }
+      }
+    };
+
+    // Initial update
+    updateSelectionBoxFromURL();
+
+    // Listen for URL changes
+    window.addEventListener("popstate", updateSelectionBoxFromURL);
+
     setIsMounted(true);
+
+    return () => {
+      window.removeEventListener("popstate", updateSelectionBoxFromURL);
+    };
   }, []);
 
   useEffect(() => {
@@ -239,8 +295,8 @@ export default function Viewer3D({ modelId, onProgress }) {
     });
 
     const planeGeometry = new THREE.PlaneGeometry(
-      _SELECTION_BOX_SIZE.xSize,
-      _SELECTION_BOX_SIZE.ySize
+      selectionBoxSize.xSize,
+      selectionBoxSize.ySize
     );
     const selectionBox = new THREE.Mesh(planeGeometry, planeMaterial);
     selectionBox.position.set(_INIT_BOX.x, _INIT_BOX.y, _DEFAULT_Z);
@@ -279,8 +335,8 @@ export default function Viewer3D({ modelId, onProgress }) {
   }
 
   const isPointInBox = (x, y, boxX, boxY) => {
-    const halfBoxSizeX = _SELECTION_BOX_SIZE.xSize / 2;
-    const halfBoxSizeY = _SELECTION_BOX_SIZE.ySize / 2;
+    const halfBoxSizeX = selectionBoxSize.xSize / 2;
+    const halfBoxSizeY = selectionBoxSize.ySize / 2;
     return (
       x >= boxX - halfBoxSizeX &&
       x <= boxX + halfBoxSizeX &&
@@ -365,8 +421,8 @@ export default function Viewer3D({ modelId, onProgress }) {
   };
 
   const boxToCellIds = (boxCenterX, boxCenterY) => {
-    const [startX, endX] = getRange(boxCenterX, _SELECTION_BOX_SIZE.xSize);
-    const [startY, endY] = getRange(boxCenterY, _SELECTION_BOX_SIZE.ySize);
+    const [startX, endX] = getRange(boxCenterX, selectionBoxSize.xSize);
+    const [startY, endY] = getRange(boxCenterY, selectionBoxSize.ySize);
     const cellsToLoad = [];
     for (let y = startY; y < endY; y++) {
       for (let x = startX; x < endX; x++) {

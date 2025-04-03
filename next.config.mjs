@@ -1,5 +1,5 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,9 +24,19 @@ const nextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      {
+        source: "/:path*@:size",
+        destination: "/:path*?size=:size",
+      },
+    ];
+  },
   webpack: (config) => {
-    config.resolve.alias['gaussian-splats-3d'] =
-      path.resolve(__dirname, 'GaussianSplats3D/build/gaussian-splats-3d.module.js');
+    config.resolve.alias["gaussian-splats-3d"] = path.resolve(
+      __dirname,
+      "GaussianSplats3D/build/gaussian-splats-3d.module.js"
+    );
     return config;
   },
   swcMinify: true,
