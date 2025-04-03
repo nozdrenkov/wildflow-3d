@@ -3,6 +3,7 @@ import * as GaussianSplats3D from "gaussian-splats-3d";
 import * as THREE from "three";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 import { WorldPositionedSpinner } from "./Spinner";
+import { getDeviceType } from "../../utils/deviceDetect";
 
 const _BLUE = 0x0000ff;
 const _ORANGE = 0xff8800;
@@ -25,14 +26,22 @@ const _DEFAULT_CAMERA = {
 
 export default function Viewer3D({ onProgress }) {
   // const _MODEL_PATH = `/DZVNm9`;
+  const deviceInfo = getDeviceType();
   const _MODEL_PATH = "https://storage.googleapis.com/wildflow/DZVNm9";
   const _POINT_CLOUD_PATH = `${_MODEL_PATH}/pc.ply`;
   const _SPLAT_FOLDER = `${_MODEL_PATH}/splats`;
 
-  const [selectionBoxSize, setSelectionBoxSize] = useState({
-    xSize: 5,
-    ySize: 5,
-  });
+  const [selectionBoxSize, setSelectionBoxSize] = useState(
+    deviceInfo.isLowEndDevice
+      ? {
+          xSize: 4,
+          ySize: 4,
+        }
+      : {
+          xSize: 6,
+          ySize: 5,
+        }
+  );
 
   const valueBetween = (x, minX, maxX, margin) => {
     let mnX = minX + margin;
