@@ -4,11 +4,7 @@ import ProgressBar from "./ProgressBar";
 
 const Viewer3D = dynamic(() => import("./Viewer3D"), { ssr: false });
 
-interface Viewer3DWrapperProps {
-  modelId: string;
-}
-
-export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
+export default function Viewer3DWrapper() {
   const [progress, setProgress] = useState({
     percent: 0,
     message: "Initializing...",
@@ -42,7 +38,7 @@ export default function Viewer3DWrapper({ modelId }: Viewer3DWrapperProps) {
           <div className="text-blue-100 text-xs pr-16">{progress.message}</div>
         </div>
       )}
-      <Viewer3D modelId={modelId} onProgress={handleProgress} />
+      <Viewer3D onProgress={handleProgress} />
     </div>
   );
 }

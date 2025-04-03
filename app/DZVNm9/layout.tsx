@@ -11,11 +11,10 @@ import { fetchContributors } from "../utils/fetchContributors";
 const hardcodedModelId = "DZVNm9";
 
 export default function ModelLayout({
-  children,
-  params,
+  children, // params,
 }: {
   children: React.ReactNode;
-  params: { modelId: string };
+  // params: { modelId: string };
 }) {
   const [showContributors, setShowContributors] = useState(false);
   const [dataSource, setDataSource] = useState("Loading...");
@@ -45,7 +44,7 @@ export default function ModelLayout({
 
   return (
     <div className="relative w-full h-screen">
-      <Viewer3DWrapper modelId={hardcodedModelId} />
+      <Viewer3DWrapper />
       <div className="absolute bottom-2.5 left-2.5 z-50">
         <Link
           href="https://wildflow.ai"

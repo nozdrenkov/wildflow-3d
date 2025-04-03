@@ -23,9 +23,7 @@ const _DEFAULT_CAMERA = {
   up: [0.0, 1.0, 0.0],
 };
 
-const modelId = "DZVNm9";
-
-export default function Viewer3D({ modelId, onProgress }) {
+export default function Viewer3D({ onProgress }) {
   // const _MODEL_PATH = `/DZVNm9`;
   const _MODEL_PATH = "https://storage.googleapis.com/wildflow/DZVNm9";
   const _POINT_CLOUD_PATH = `${_MODEL_PATH}/pc.ply`;
@@ -173,7 +171,7 @@ export default function Viewer3D({ modelId, onProgress }) {
     init();
 
     return () => cleanup && cleanup();
-  }, [isMounted, modelId, onProgress]);
+  }, [isMounted, onProgress]);
 
   function createViewer(threeScene) {
     const viewer = new GaussianSplats3D.Viewer({
@@ -199,7 +197,6 @@ export default function Viewer3D({ modelId, onProgress }) {
         dampingFactor: 0.05,
       },
       progressCallback: (percent, message) => {
-        // console.log(`Loading progress: ${percent}% - ${message}`);
         onProgress(percent, message);
       },
     });
@@ -583,7 +580,6 @@ export default function Viewer3D({ modelId, onProgress }) {
         const validBuffers = splatBuffers.filter((b) => b !== null);
         const validConfigs = splatConfigs.slice(0, validBuffers.length);
 
-        // console.log(`Adding ${validBuffers.length} splat buffers to scene`);
         onProgress(95, "Adding splats to scene...");
 
         await viewer.addSplatBuffers(
@@ -614,8 +610,6 @@ export default function Viewer3D({ modelId, onProgress }) {
         // Re-enable rendering
         viewer.setRenderMode(originalRenderMode);
       }
-
-      // console.log("All splats added to scene");
 
       // Hide the bounding box after splats are loaded
       if (selectionBoxRef.current) {

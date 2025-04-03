@@ -9,11 +9,7 @@ import { ReactNode } from "react";
 // Hardcode the modelId for this specific route
 const hardcodedModelId = "DZVNm9";
 
-export default function Contributors({
-  params,
-}: {
-  params: { modelId: string };
-}) {
+export default function Contributors() {
   const router = useRouter();
   // Don't destructure modelId from params, use the hardcoded value
   // const { modelId } = params;
