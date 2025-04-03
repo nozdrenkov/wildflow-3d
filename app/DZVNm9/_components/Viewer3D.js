@@ -18,15 +18,17 @@ const _DEFAULT_Z = -4.0;
 const _POINT_SIZE = 0.03;
 const _POINT_TEXTURE_SIZE = 64;
 const _DEFAULT_CAMERA = {
-  position: [-6.36302, -7.56634, 1.84438],
-  lookAt: [-7.69713, -7.04284, -3.20002],
+  position: [-8.53089, -6.91661, 1.55049],
+  lookAt: [-9.10932, -5.69911, -3.50394],
   up: [0.0, 1.0, 0.0],
 };
 
+const modelId = "DZVNm9";
+
 export default function Viewer3D({ modelId, onProgress }) {
-  const _MODEL_PATH = `/DZVNm9`;
-  const _POINT_CLOUD_PATH = `${_MODEL_PATH}/point_cloud.ply`;
-  // const _SPLAT_FOLDER = `${_MODEL_PATH}/1s`;
+  // const _MODEL_PATH = `/DZVNm9`;
+  const _MODEL_PATH = "https://storage.googleapis.com/wildflow/DZVNm9";
+  const _POINT_CLOUD_PATH = `${_MODEL_PATH}/pc.ply`;
   const _SPLAT_FOLDER = `${_MODEL_PATH}/splats`;
 
   const [selectionBoxSize, setSelectionBoxSize] = useState({
