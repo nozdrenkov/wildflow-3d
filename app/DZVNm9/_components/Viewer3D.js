@@ -22,12 +22,13 @@ const _DEFAULT_CAMERA = {
   lookAt: [-7.69713, -7.04284, -3.20002],
   up: [0.0, 1.0, 0.0],
 };
-const _MODEL_PATH = "/m9";
-const _METADATA_PATH = `${_MODEL_PATH}/metadata.json`;
-const _POINT_CLOUD_PATH = `${_MODEL_PATH}/point_cloud.ply`;
-const _SPLAT_FOLDER = `${_MODEL_PATH}/1s`;
 
 export default function Viewer3D({ modelId, onProgress }) {
+  const _MODEL_PATH = `/DZVNm9`;
+  const _POINT_CLOUD_PATH = `${_MODEL_PATH}/point_cloud.ply`;
+  // const _SPLAT_FOLDER = `${_MODEL_PATH}/1s`;
+  const _SPLAT_FOLDER = `${_MODEL_PATH}/splats`;
+
   const [selectionBoxSize, setSelectionBoxSize] = useState({
     xSize: 5,
     ySize: 5,
@@ -76,7 +77,6 @@ export default function Viewer3D({ modelId, onProgress }) {
   const selectionBoxRef = useRef(null);
   const currentSelectionBoxRef = useRef(null);
   const loadedSplatIdsRef = useRef(new Set());
-  const metadataRef = useRef(null);
   const isLoadingRef = useRef(false);
   const [isMounted, setIsMounted] = useState(false);
   const [spinnerPosition, setSpinnerPosition] = useState({
@@ -151,20 +151,6 @@ export default function Viewer3D({ modelId, onProgress }) {
     let cleanup;
 
     async function init() {
-      // Load metadata
-      try {
-        const response = await fetch(_METADATA_PATH);
-        const metadata = await response.json();
-        metadataRef.current = metadata;
-        console.log(
-          "Loaded metadata for",
-          Object.keys(metadataRef.current).length,
-          "cells"
-        );
-      } catch (error) {
-        console.error("Error loading metadata:", error);
-      }
-
       // Create viewer and initialize scene
       const viewer = createViewer(threeScene);
       viewerInstanceRef.current = viewer;
@@ -529,7 +515,8 @@ export default function Viewer3D({ modelId, onProgress }) {
       // Process this batch in parallel
       await Promise.all(
         batch.map(async (cellId) => {
-          const filePath = `${_SPLAT_FOLDER}/${cellId}.ply`;
+          // The filepath needs to be .ksplat instead of .ply
+          const filePath = `${_SPLAT_FOLDER}/${cellId}.ksplat`;
 
           try {
             const buffer = await viewer.downloadSplatSceneToSplatBuffer(
@@ -538,7 +525,7 @@ export default function Viewer3D({ modelId, onProgress }) {
               undefined,
               false, // showLoadingUI
               undefined,
-              GaussianSplats3D.SceneFormat.Ply
+              GaussianSplats3D.SceneFormat.KSplat // This is the critical change!
             );
 
             if (buffer) {
