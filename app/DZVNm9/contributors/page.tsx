@@ -6,23 +6,28 @@ import { fetchContributors } from "../../utils/fetchContributors";
 import { useEffect, useState } from "react";
 import { ReactNode } from "react";
 
+// Hardcode the modelId for this specific route
+const hardcodedModelId = "DZVNm9";
+
 export default function Contributors({
   params,
 }: {
   params: { modelId: string };
 }) {
   const router = useRouter();
-  const { modelId } = params;
+  // Don't destructure modelId from params, use the hardcoded value
+  // const { modelId } = params;
+
   const [contributorsContent, setContributorsContent] =
     useState<ReactNode | null>(null);
 
   useEffect(() => {
-    fetchContributors(modelId)
+    fetchContributors(hardcodedModelId)
       .then((data) => {
         setContributorsContent(data.contributorsContent);
       })
       .catch((error) => console.error("Error fetching contributors:", error));
-  }, [modelId]);
+  }, []); // Remove modelId from dependency array
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">

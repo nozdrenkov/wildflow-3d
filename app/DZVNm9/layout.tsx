@@ -7,7 +7,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { fetchContributors } from "../utils/fetchContributors";
 
-const modelId = "DZVNm9";
+// Use this hard-coded modelId instead of relying on params
+const hardcodedModelId = "DZVNm9";
 
 export default function ModelLayout({
   children,
@@ -20,13 +21,15 @@ export default function ModelLayout({
   const [dataSource, setDataSource] = useState("Loading...");
   const pathname = usePathname();
   const router = useRouter();
-  const { modelId } = params;
+
+  // Remove this line that's causing the issue
+  // const { modelId } = params;
 
   useEffect(() => {
-    fetchContributors(modelId)
+    fetchContributors(hardcodedModelId)
       .then((data) => setDataSource(data.dataSource))
       .catch((error) => console.error("Error fetching contributors:", error));
-  }, [modelId]);
+  }, []); // Remove modelId from dependency array since we're using hardcodedModelId
 
   useEffect(() => {
     setShowContributors(pathname.endsWith("/contributors"));
@@ -34,15 +37,15 @@ export default function ModelLayout({
 
   const handleContributorsToggle = () => {
     if (showContributors) {
-      router.push(`/${modelId}`);
+      router.push(`/${hardcodedModelId}`);
     } else {
-      router.push(`/${modelId}/contributors`);
+      router.push(`/${hardcodedModelId}/contributors`);
     }
   };
 
   return (
     <div className="relative w-full h-screen">
-      <Viewer3DWrapper modelId={modelId} />
+      <Viewer3DWrapper modelId={hardcodedModelId} />
       <div className="absolute bottom-2.5 left-2.5 z-50">
         <Link
           href="https://wildflow.ai"
