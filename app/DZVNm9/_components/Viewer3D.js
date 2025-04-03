@@ -179,15 +179,13 @@ export default function Viewer3D({ modelId, onProgress }) {
     // Remove previous plane if exists
     if (boundingBoxRef.current && boundingBoxRef.current.parent) {
       threeScene.remove(boundingBoxRef.current);
-      threeScene.remove(boundingEdgesRef.current);
     }
 
     // Create a plane geometry instead of a box
     const planeGeometry = new THREE.PlaneGeometry(_BOX_SIZE, _BOX_SIZE);
-    const edges = new THREE.EdgesGeometry(planeGeometry);
 
     const planeMaterial = new THREE.MeshBasicMaterial({
-      color: 0x0000ff, // Initial blue color
+      color: 0x0000ff, // Default blue color
       transparent: true,
       opacity: 0.3,
       side: THREE.DoubleSide,
@@ -196,42 +194,31 @@ export default function Viewer3D({ modelId, onProgress }) {
       visible: true,
     });
 
-    const edgesMaterial = new THREE.LineBasicMaterial({
-      color: 0xffffff,
-      visible: true,
-    });
-
     const boundingPlane = new THREE.Mesh(planeGeometry, planeMaterial);
-    const boundingEdges = new THREE.LineSegments(edges, edgesMaterial);
 
     // Position at fixed _DEFAULT_Z
     boundingPlane.position.set(0, 0, _DEFAULT_Z);
-    boundingEdges.position.copy(boundingPlane.position);
 
     // Make the plane horizontal
     boundingPlane.rotation.x = 0;
-    boundingEdges.rotation.x = 0;
 
     // Add to scene
     threeScene.add(boundingPlane);
-    threeScene.add(boundingEdges);
 
     // Store references
     boundingBoxRef.current = boundingPlane;
-    boundingEdgesRef.current = boundingEdges;
+    // Don't create or reference edges at all
+    boundingEdgesRef.current = null;
   }
 
   function updateBoundingBox(x, y) {
     if (!boundingBoxRef.current) return;
 
     const boundingPlane = boundingBoxRef.current;
-    const boundingEdges = boundingEdgesRef.current;
 
     // Update position
     boundingPlane.position.x = x;
     boundingPlane.position.y = y;
-    boundingEdges.position.x = x;
-    boundingEdges.position.y = y;
   }
 
   function updateBoundingBoxGeometry() {
@@ -239,7 +226,6 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     // Position is always at _DEFAULT_Z
     boundingBoxRef.current.position.z = _DEFAULT_Z;
-    boundingEdgesRef.current.position.z = _DEFAULT_Z;
   }
 
   function checkCellsExist(startX, startY) {
@@ -333,7 +319,6 @@ export default function Viewer3D({ modelId, onProgress }) {
       // Only show the box if we have data and we're outside the loaded area
       if (boundingBoxRef.current) {
         boundingBoxRef.current.visible = hasData && !isInLoadedArea;
-        boundingEdgesRef.current.visible = hasData && !isInLoadedArea;
       }
     }
     // We're not returning here, so the event continues to propagate
@@ -382,9 +367,8 @@ export default function Viewer3D({ modelId, onProgress }) {
 
     // Change bounding box color to orange to indicate loading
     if (boundingBoxRef.current) {
-      boundingBoxRef.current.material.color.set(0xff8800); // Orange color
+      boundingBoxRef.current.material.color.set(0xff8800); // Set to orange for loading
       boundingBoxRef.current.visible = true;
-      boundingEdgesRef.current.visible = true;
 
       // Show the CSS spinner above the plane
       showSpinner({
@@ -397,7 +381,7 @@ export default function Viewer3D({ modelId, onProgress }) {
     loadSplatsForGrid(point.x, point.y).catch((error) => {
       console.error("Error in loadSplatsForGrid:", error);
       if (boundingBoxRef.current) {
-        boundingBoxRef.current.material.color.set(0x0000ff); // Blue color
+        boundingBoxRef.current.material.color.set(0x0000ff); // Reset to blue on error
       }
       isLoadingRef.current = false;
       onProgress(0, "");
@@ -659,7 +643,6 @@ export default function Viewer3D({ modelId, onProgress }) {
       // Hide the bounding box after splats are loaded
       if (boundingBoxRef.current) {
         boundingBoxRef.current.visible = false;
-        boundingEdgesRef.current.visible = false;
         // Reset color back to blue for next use
         boundingBoxRef.current.material.color.set(0x0000ff);
       }
@@ -673,7 +656,7 @@ export default function Viewer3D({ modelId, onProgress }) {
       console.error("Error adding splats to scene:", error);
       // Reset color back to blue if there's an error
       if (boundingBoxRef.current) {
-        boundingBoxRef.current.material.color.set(0x0000ff); // Blue color
+        boundingBoxRef.current.material.color.set(0x0000ff);
       }
       // Make sure to reset loading state
       isLoadingRef.current = false;
@@ -722,7 +705,12 @@ export default function Viewer3D({ modelId, onProgress }) {
         const boxCenterY = startY + _HALF_BOX_SIZE + 0.5;
 
         updateBoundingBox(boxCenterX, boxCenterY);
-        // No need to update geometry, Z is fixed
+
+        // Set the first load to orange
+        if (boundingBoxRef.current) {
+          boundingBoxRef.current.material.color.set(0xff8800); // Orange color
+          boundingBoxRef.current.visible = true;
+        }
 
         // Show spinner
         showSpinner({
@@ -768,15 +756,14 @@ export default function Viewer3D({ modelId, onProgress }) {
         if (boundingBoxRef.current) {
           boundingBoxRef.current.material.color.set(0xff8800); // Orange color
           boundingBoxRef.current.visible = true;
-          boundingEdgesRef.current.visible = true;
-
-          // Show spinner
-          showSpinner({
-            x: boxCenterX,
-            y: boxCenterY,
-            z: _DEFAULT_Z,
-          });
         }
+
+        // Show spinner
+        showSpinner({
+          x: boxCenterX,
+          y: boxCenterY,
+          z: _DEFAULT_Z,
+        });
 
         // IMPORTANT: Force a render to make the box visible immediately
         viewer.forceRender();
@@ -851,6 +838,7 @@ export default function Viewer3D({ modelId, onProgress }) {
     // Clear refs
     viewerInstanceRef.current = null;
     boundingBoxRef.current = null;
+    // We still need to null this out even though we don't use it
     boundingEdgesRef.current = null;
     loadedSplatIdsRef.current.clear();
 
