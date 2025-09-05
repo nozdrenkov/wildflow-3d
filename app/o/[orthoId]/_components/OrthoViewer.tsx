@@ -18,8 +18,8 @@ export default function OrthoViewer({ orthoId }: OrthoViewerProps) {
     const initMap = async () => {
       if (!mapRef.current) return;
       
-      const baseUrl = "";
-      const metadataUrl = `/orthos/${orthoId}/metadata.json`;
+      const baseUrl = "https://storage.googleapis.com/wildflow/orthos/";
+      const metadataUrl = `${baseUrl}${orthoId}/metadata.json`;
       
       let meta;
       try {
@@ -57,14 +57,14 @@ export default function OrthoViewer({ orthoId }: OrthoViewerProps) {
         minZoom,
         maxZoom,
         noWrap: true,
-        errorTileUrl: `/orthos/${orthoId}/blank.png`,
+        errorTileUrl: `${baseUrl}${orthoId}/blank.png`,
         bounds: imageBounds,
         minNativeZoom: minZoom,
         maxNativeZoom: maxZoom,
       });
 
       layer.getTileUrl = function (coords) {
-        return `/orthos/${orthoId}/${coords.z}/${coords.y}/${coords.x}.webp`;
+        return `${baseUrl}${orthoId}/${coords.z}/${coords.y}/${coords.x}.webp`;
       };
 
       layer.addTo(map);
