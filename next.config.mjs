@@ -23,7 +23,20 @@ const nextConfig = {
         ],
       },
       {
-        source: "/((?!o/).*)",
+        source: "/oo/(.*)",
+        headers: [
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin",
+          },
+          {
+            key: "Cross-Origin-Embedder-Policy",
+            value: "unsafe-none",
+          },
+        ],
+      },
+      {
+        source: "/((?!oo?/).*)",
         headers: [
           {
             key: "Cross-Origin-Opener-Policy",
