@@ -21,6 +21,16 @@ export default function OrthoViewer({ orthoId }: OrthoViewerProps) {
   const isSoneva = orthoId.startsWith("soneva");
 
   useEffect(() => {
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason?.message?.includes('tile x/y outside zoom level bounds')) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => window.removeEventListener('unhandledrejection', handleRejection);
+  }, []);
+
+  useEffect(() => {
     if (isSoneva) {
       import("../../../soneva/surveys").then(({ surveys }) => {
         const filtered = surveys
@@ -38,9 +48,65 @@ export default function OrthoViewer({ orthoId }: OrthoViewerProps) {
       if (!mapRef.current) return;
       
       const L = await import("leaflet");
+      const pmtiles = await import("pmtiles");
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("leaflet/dist/leaflet.css");
       
+      const pmtilesUrl = `https://storage.googleapis.com/wildflow/${orthoId}/${orthoId}_ortho.pmtiles`;
+      
+      const archive = new pmtiles.PMTiles(pmtilesUrl);
+      
+      try {
+        const [header, meta] = await Promise.all([
+          archive.getHeader(),
+          archive.getMetadata().catch(() => ({})) as Promise<any>,
+        ]);
+
+        const tileSize = 256;
+        const minZoom = header.minZoom ?? 0;
+        const maxZoom = header.maxZoom ?? 6;
+        const ext = tileSize * (1 << maxZoom);
+        const w = Number(meta.width_px) || ext;
+        const h = Number(meta.height_px) || ext;
+
+        const map = L.map(mapRef.current, {
+          crs: L.CRS.Simple,
+          zoomControl: true,
+          minZoom,
+          maxZoom,
+          inertia: true,
+          wheelPxPerZoomLevel: 120,
+          attributionControl: false,
+        });
+
+        const bounds = L.latLngBounds(
+          map.unproject([0, h], maxZoom),
+          map.unproject([w, 0], maxZoom)
+        );
+        
+        map.fitBounds(bounds);
+        map.setZoom(Math.max(2, minZoom));
+
+        const layer = pmtiles.leafletRasterLayer(archive, {
+          tileSize,
+          minZoom,
+          maxZoom,
+          noWrap: true,
+          bounds,
+        });
+        
+        try {
+          layer.addTo(map);
+        } catch (e) {
+          console.warn("Layer add error ignored:", e);
+        }
+
+        mapInstanceRef.current = map;
+        return;
+      } catch (e) {
+        console.log("PMTiles error:", e);
+      }
+
       const newUrl = `https://storage.googleapis.com/wildflow/${orthoId}/mesh_ortho_xyz/metadata.json`;
       const oldUrl = `https://storage.googleapis.com/wildflow/orthos/${orthoId}/metadata.json`;
       

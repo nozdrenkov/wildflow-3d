@@ -3,26 +3,26 @@
 import { useRouter } from "next/navigation";
 import { XMarkIcon } from "@heroicons/react/24/solid";
 import { fetchContributors } from "../../../utils/fetchContributors";
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { ReactNode } from "react";
 
 export default function Contributors({
   params,
 }: {
-  params: { modelId: string };
+  params: Promise<{ tileId: string }>;
 }) {
+  const { tileId } = use(params);
   const router = useRouter();
-  const { modelId } = params;
   const [contributorsContent, setContributorsContent] =
     useState<ReactNode | null>(null);
 
   useEffect(() => {
-    fetchContributors(modelId)
+    fetchContributors(tileId)
       .then((data) => {
         setContributorsContent(data.contributorsContent);
       })
       .catch((error) => console.error("Error fetching contributors:", error));
-  }, [modelId]);
+  }, [tileId]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">

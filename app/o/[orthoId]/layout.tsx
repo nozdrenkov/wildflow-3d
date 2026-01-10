@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -11,13 +11,13 @@ export default function OrthoLayout({
   params,
 }: {
   children: React.ReactNode;
-  params: { orthoId: string };
+  params: Promise<{ orthoId: string }>;
 }) {
+  const { orthoId } = use(params);
   const [showContributors, setShowContributors] = useState(false);
   const [dataSource, setDataSource] = useState("Loading...");
   const pathname = usePathname();
   const router = useRouter();
-  const { orthoId } = params;
 
   useEffect(() => {
     fetchOrthoContributors(orthoId)

@@ -3,16 +3,16 @@
 import { useRouter } from "next/navigation";
 import { XMarkIcon } from "@heroicons/react/24/solid";
 import { fetchContributors } from "../../utils/fetchContributors";
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { ReactNode } from "react";
 
 export default function Contributors({
   params,
 }: {
-  params: { modelId: string };
+  params: Promise<{ modelId: string }>;
 }) {
+  const { modelId } = use(params);
   const router = useRouter();
-  const { modelId } = params;
   const [contributorsContent, setContributorsContent] =
     useState<ReactNode | null>(null);
 

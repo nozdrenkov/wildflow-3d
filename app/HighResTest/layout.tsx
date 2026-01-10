@@ -13,7 +13,6 @@ export default function ModelLayout({
   children,
 }: {
   children: React.ReactNode;
-  params: { modelId: string };
 }) {
   const [showContributors, setShowContributors] = useState(false);
   const [dataSource, setDataSource] = useState("Loading...");

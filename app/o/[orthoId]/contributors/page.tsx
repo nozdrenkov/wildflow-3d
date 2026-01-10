@@ -3,16 +3,16 @@
 import { useRouter } from "next/navigation";
 import { XMarkIcon } from "@heroicons/react/24/solid";
 import { fetchOrthoContributors } from "../../../utils/fetchOrthoContributors";
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { ReactNode } from "react";
 
 export default function Contributors({
   params,
 }: {
-  params: { orthoId: string };
+  params: Promise<{ orthoId: string }>;
 }) {
+  const { orthoId } = use(params);
   const router = useRouter();
-  const { orthoId } = params;
   const [contributorsContent, setContributorsContent] =
     useState<ReactNode | null>(null);
 

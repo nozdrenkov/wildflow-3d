@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Viewer3DWrapper from "./_components/Viewer3DWrapper";
 import Image from "next/image";
@@ -12,13 +12,13 @@ export default function ModelLayout({
   params,
 }: {
   children: React.ReactNode;
-  params: { modelId: string };
+  params: Promise<{ modelId: string }>;
 }) {
+  const { modelId } = use(params);
   const [showContributors, setShowContributors] = useState(false);
   const [dataSource, setDataSource] = useState("Loading...");
   const pathname = usePathname();
   const router = useRouter();
-  const { modelId } = params;
 
   useEffect(() => {
     fetchContributors(modelId)

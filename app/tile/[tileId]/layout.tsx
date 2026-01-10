@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Tile3DWrapper from "./_components/Tile3DWrapper";
 import Image from "next/image";
@@ -12,13 +12,13 @@ export default function ModelLayout({
   params,
 }: {
   children: React.ReactNode;
-  params: { tileId: string };
+  params: Promise<{ tileId: string }>;
 }) {
+  const { tileId } = use(params);
   const [showContributors, setShowContributors] = useState(false);
   const [dataSource, setDataSource] = useState("Loading...");
   const pathname = usePathname();
   const router = useRouter();
-  const { tileId } = params;
 
   const parseTileId = (tileId: string) => {
     const [modelId, tileX, tileY] = tileId.split("_");

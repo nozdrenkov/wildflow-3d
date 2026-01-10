@@ -5,15 +5,20 @@ export async function fetchOrthoContributors(orthoId: string): Promise<{
   dataSource: string;
   contributorsContent: ReactNode;
 }> {
-  const newUrl = `https://storage.googleapis.com/wildflow/${orthoId}/contributors.md`;
-  const oldUrl = `https://storage.googleapis.com/wildflow/orthos/${orthoId}/contributors.md`;
+  const urls = [
+    `https://storage.googleapis.com/wildflow/${orthoId}/CONTRIBUTORS.md`,
+    `https://storage.googleapis.com/wildflow/${orthoId}/contributors.md`,
+    `https://storage.googleapis.com/wildflow/orthos/${orthoId}/contributors.md`,
+  ];
   
-  let response = await fetch(newUrl);
-  if (!response.ok) {
-    response = await fetch(oldUrl);
-    if (!response.ok) {
-      throw new Error("Failed to fetch contributors data");
-    }
+  let response;
+  for (const url of urls) {
+    response = await fetch(url);
+    if (response.ok) break;
+  }
+  
+  if (!response || !response.ok) {
+    throw new Error("Failed to fetch contributors data");
   }
 
   const text = await response.text();
