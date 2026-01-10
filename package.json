@@ -7,7 +7,7 @@
     "build": "npm run build-lib && next build --webpack",
     "start": "next start",
     "lint": "next lint",
-    "build-lib": "cd GaussianSplats3D && rm -rf node_modules && npm install --legacy-peer-deps && npm run build"
+    "build-lib": "cd GaussianSplats3D && npm ci && npm run build"
   },
   "dependencies": {
     "@heroicons/react": "^2.1.5",
